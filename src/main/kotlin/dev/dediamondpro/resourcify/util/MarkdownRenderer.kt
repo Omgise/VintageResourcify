@@ -23,6 +23,7 @@ import com.cleanroommc.modularui.widgets.TextWidget
 import dev.dediamondpro.resourcify.config.Config
 import net.minecraft.client.Minecraft
 import net.minecraft.util.EnumChatFormatting
+import java.net.URL
 import org.commonmark.node.AbstractVisitor
 import org.commonmark.node.BlockQuote
 import org.commonmark.node.BulletList
@@ -92,6 +93,35 @@ object MarkdownRenderer {
         }
 
         override fun visit(paragraph: Paragraph) {
+            // If the paragraph contains only image nodes (with maybe whitespace
+            // text between them), emit each as a block-level rendered image.
+            // Common case: Modrinth's banner area is a single paragraph wrapping
+            // one or more <img>/markdown-image references.
+            val images = mutableListOf<Image>()
+            var hasNonImage = false
+            var child = paragraph.firstChild
+            while (child != null) {
+                when (child) {
+                    is Image -> images.add(child)
+                    is Text -> if (child.literal.isNotBlank()) hasNonImage = true
+                    is SoftLineBreak, is HardLineBreak -> {}
+                    else -> hasNonImage = true
+                }
+                child = child.next
+            }
+            if (images.isNotEmpty() && !hasNonImage) {
+                images.forEach { img ->
+                    val url = try { URL(img.destination) } catch (_: Exception) { null }
+                    if (url != null) {
+                        out += MarkdownImage(url, width)
+                    } else {
+                        val alt = collectInline(img)
+                        if (alt.isNotEmpty()) emitLines("[$alt]", theme.muted)
+                    }
+                }
+                spacer()
+                return
+            }
             val text = collectText(paragraph)
             if (text.isNotBlank()) {
                 emitLines(text, theme.text)
