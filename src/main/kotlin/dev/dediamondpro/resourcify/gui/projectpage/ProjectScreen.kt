@@ -24,6 +24,7 @@ import com.cleanroommc.modularui.screen.ModularScreen
 import com.cleanroommc.modularui.widgets.ButtonWidget
 import com.cleanroommc.modularui.widgets.ListWidget
 import com.cleanroommc.modularui.widgets.TextWidget
+import com.cleanroommc.modularui.widgets.layout.Flow
 import dev.dediamondpro.resourcify.VintageResourcify
 import dev.dediamondpro.resourcify.platform.Platform
 import dev.dediamondpro.resourcify.services.IProject
@@ -53,17 +54,24 @@ class ProjectScreen(project: IProject, packsFolder: File) : ModularScreen(Vintag
                     return@func_152344_a
                 }
                 matching.forEach { version: IVersion ->
-                    versionsList.child(
-                        SimpleButton()
-                            .height(16).widthRel(1f)
-                            .overlay(IKey.str("${version.getName()} (${version.getFileName()})  [Install]"))
-                            .onMousePressed { btn ->
-                                if (btn == 0) {
-                                    install(version, packsFolder)
-                                    true
-                                } else false
-                            }
-                    )
+                    val row = Flow.row()
+                        .height(20).widthRel(1f).margin(0, 0, 0, 2)
+                        .child(
+                            TextWidget(IKey.str(version.getName()))
+                                .heightRel(1f).left(4).widthRel(0.75f)
+                        )
+                        .child(
+                            SimpleButton()
+                                .size(48, 16).right(2).top(2)
+                                .overlay(IKey.str("Install"))
+                                .onMousePressed { btn ->
+                                    if (btn == 0) {
+                                        install(version, packsFolder)
+                                        true
+                                    } else false
+                                }
+                        )
+                    versionsList.child(row)
                 }
             }
         }
