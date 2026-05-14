@@ -57,6 +57,10 @@ import org.commonmark.parser.Parser
 object MarkdownRenderer {
 
     private val parser = Parser.builder().build()
+    // GFM-style bare URL autolinking. CommonMark only links explicit
+    // <url> / [text](url) forms, but Modrinth bodies routinely paste raw
+    // URLs in paragraphs.
+    private val BARE_URL = Regex("""\bhttps?://[^\s<>\[\]"']+""")
     private val htmlTag = Regex("<[^>]+>")
     // Catches <img ... src="..." ... alt="..."> with attributes in any order
     // and optional self-close. Modrinth bodies frequently embed bare HTML img
@@ -172,10 +176,103 @@ object MarkdownRenderer {
                 spacer()
                 return
             }
+            if (hasInlineLink(paragraph)) {
+                val runs = mutableListOf<MarkdownParagraph.Run>()
+                collectRuns(paragraph, "", null, runs)
+                if (runs.isNotEmpty()) {
+                    out += MarkdownParagraph(runs, width, theme)
+                    spacer()
+                    return
+                }
+            }
             val text = collectText(paragraph)
             if (text.isNotBlank()) {
                 emitLines(text, theme.text)
                 spacer()
+            }
+        }
+
+        private fun hasInlineLink(node: Node): Boolean {
+            var c = node.firstChild
+            while (c != null) {
+                if (c is Link) {
+                    // Image-only links are handled separately above.
+                    if (sololImage(c) == null) return true
+                }
+                if (c is Text && BARE_URL.containsMatchIn(c.literal)) return true
+                if (hasInlineLink(c)) return true
+                c = c.next
+            }
+            return false
+        }
+
+        private fun appendTextWithAutolinks(
+            literal: String,
+            styles: String,
+            linkUrl: String?,
+            out: MutableList<MarkdownParagraph.Run>,
+        ) {
+            // If we're already inside an explicit Link, don't carve out
+            // sub-links - the surrounding URL wins.
+            if (linkUrl != null) {
+                out += MarkdownParagraph.Run(literal, styles, linkUrl)
+                return
+            }
+            var cursor = 0
+            for (m in BARE_URL.findAll(literal)) {
+                if (m.range.first > cursor) {
+                    out += MarkdownParagraph.Run(literal.substring(cursor, m.range.first), styles, null)
+                }
+                var url = m.value
+                // Strip common sentence-final punctuation so "see foo.com." doesn't
+                // resolve to "foo.com." (which 404s) - mirrors GFM behavior.
+                while (url.isNotEmpty() && url.last() in ".,;:!?)") {
+                    url = url.dropLast(1)
+                }
+                if (url.isNotEmpty()) {
+                    out += MarkdownParagraph.Run(url, styles + "§n", url)
+                }
+                val tail = m.value.length - url.length
+                cursor = m.range.last + 1 - tail
+            }
+            if (cursor < literal.length) {
+                out += MarkdownParagraph.Run(literal.substring(cursor), styles, null)
+            }
+        }
+
+        private fun collectRuns(
+            node: Node,
+            styles: String,
+            linkUrl: String?,
+            out: MutableList<MarkdownParagraph.Run>,
+        ) {
+            var child = node.firstChild
+            while (child != null) {
+                when (child) {
+                    is Text -> appendTextWithAutolinks(child.literal, styles, linkUrl, out)
+                    is StrongEmphasis -> collectRuns(child, styles + "§l", linkUrl, out)
+                    is Emphasis -> collectRuns(child, styles + "§o", linkUrl, out)
+                    is Code -> out += MarkdownParagraph.Run(child.literal, styles + "§o", linkUrl)
+                    is Link -> {
+                        val inner = sololImage(child)
+                        if (inner != null) {
+                            val alt = collectInline(inner)
+                            if (alt.isNotEmpty()) {
+                                out += MarkdownParagraph.Run("[$alt]", styles + "§n", child.destination)
+                            }
+                        } else {
+                            collectRuns(child, styles + "§n", child.destination, out)
+                        }
+                    }
+                    is Image -> {
+                        val alt = collectInline(child)
+                        if (alt.isNotEmpty()) out += MarkdownParagraph.Run("[$alt]", styles, linkUrl)
+                    }
+                    is SoftLineBreak, is HardLineBreak -> out += MarkdownParagraph.Run(" ", styles, linkUrl)
+                    is HtmlInline -> { /* stripped earlier */ }
+                    else -> collectRuns(child, styles, linkUrl, out)
+                }
+                child = child.next
             }
         }
 
