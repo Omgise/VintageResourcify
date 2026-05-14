@@ -62,12 +62,17 @@ class AsyncIcon(private val url: URL?, private val sizePx: Int) : Widget<AsyncIc
     private fun ensureRequested() {
         if (requested || url == null) return
         requested = true
+        VintageResourcify.LOG.info("AsyncIcon request url={} size={}", url, sizePx)
         try {
             url.getImageAsync(width = sizePx.toFloat()).thenAccept { img ->
                 if (img == null) {
+                    VintageResourcify.LOG.warn("AsyncIcon image null for {}", url)
                     failed = true
                     return@thenAccept
                 }
+                VintageResourcify.LOG.info(
+                    "AsyncIcon got image {}x{} for {}", img.width, img.height, url,
+                )
                 Minecraft.getMinecraft()
                     .func_152344_a { adoptImage(img) }
             }

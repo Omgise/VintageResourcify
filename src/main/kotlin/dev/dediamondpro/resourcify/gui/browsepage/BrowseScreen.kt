@@ -134,39 +134,49 @@ private fun buildCard(
     textPrimary: Int,
     textSecondary: Int,
 ): IWidget {
-    val textLeft = INNER_PAD + ICON_SIZE + INNER_PAD
     val click = { btn: Int ->
         if (btn == 0) {
             ClientGUI.open(ProjectScreen(project, packsFolder, sourceParent))
             true
         } else false
     }
-    val summary = project.getSummary().take(160) // safety cap before wrap
-    return SimpleButton()
-        .widthRel(1f).height(CARD_HEIGHT).margin(0, 0, 0, CARD_GAP)
-        .background(Rectangle().color(cardBg))
-        .overlay() // clear default button label
-        .child(
-            AsyncIcon(project.getIconUrl(), ICON_SIZE)
-                .top(INNER_PAD).left(INNER_PAD)
-        )
+    val summary = project.getSummary().take(160)
+    // SimpleButton is a SingleChildWidget; multiple .child() calls replace
+    // each other. Wrap card content in a Flow.row so we can hold an icon
+    // alongside a vertically-stacked text column.
+    val textColumn = Flow.column()
+        .left(ICON_SIZE + INNER_PAD).top(0).right(0).heightRel(1f)
         .child(
             TextWidget(IKey.str(project.getName()).style(EnumChatFormatting.BOLD))
-                .top(INNER_PAD).left(textLeft).right(INNER_PAD).height(10)
+                .widthRel(1f).height(10)
                 .color(textPrimary)
                 .alignment(com.cleanroommc.modularui.utils.Alignment.CenterLeft)
         )
         .child(
             TextWidget(IKey.str("by ${project.getAuthor()}"))
-                .top(INNER_PAD + 12).left(textLeft).right(INNER_PAD).height(9)
+                .widthRel(1f).height(10)
                 .color(textSecondary)
                 .alignment(com.cleanroommc.modularui.utils.Alignment.CenterLeft)
         )
         .child(
             TextWidget(IKey.str(summary))
-                .top(INNER_PAD + 24).left(textLeft).right(INNER_PAD).bottom(INNER_PAD)
+                .widthRel(1f).heightRel(1f)
                 .color(textPrimary)
                 .alignment(com.cleanroommc.modularui.utils.Alignment.TopLeft)
         )
+
+    val content = Flow.row()
+        .widthRel(1f).heightRel(1f).padding(INNER_PAD, INNER_PAD, INNER_PAD, INNER_PAD)
+        .child(
+            AsyncIcon(project.getIconUrl(), ICON_SIZE)
+                .top(0).left(0)
+        )
+        .child(textColumn)
+
+    return SimpleButton()
+        .widthRel(1f).height(CARD_HEIGHT).margin(0, 0, 0, CARD_GAP)
+        .background(Rectangle().color(cardBg))
+        .overlay()
+        .child(content)
         .onMousePressed(click)
 }

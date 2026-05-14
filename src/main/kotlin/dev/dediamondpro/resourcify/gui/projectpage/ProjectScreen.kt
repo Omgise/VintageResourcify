@@ -98,7 +98,10 @@ class ProjectScreen(
                 val buttonW = 56
                 val buttonRightInset = 6
                 val nameLeft = 8
-                val nameRight = nameLeft + buttonW + buttonRightInset + 4
+                // 12px breathing room between the name's right edge and the
+                // Install button's left edge so it doesn't read as squished.
+                val nameButtonGap = 12
+                val nameRight = nameLeft + buttonW + buttonRightInset + nameButtonGap
                 val nameW = (verColW - nameRight).coerceAtLeast(40)
                 val fr = Minecraft.getMinecraft().fontRenderer
                 matching.forEach { version: IVersion ->
@@ -158,11 +161,19 @@ class ProjectScreen(
         .top(GUTTER).left(textLeft)
     val authorLine = TextWidget(IKey.str("by ${project.getAuthor()}").style(EnumChatFormatting.GRAY))
         .top(GUTTER + 16).left(textLeft)
-    val summary = TextWidget(IKey.str(project.getSummary()))
-        .top(GUTTER + 28).left(textLeft).width(descColW - iconSize - 8)
-        .alignment(com.cleanroommc.modularui.utils.Alignment.TopLeft)
+    // Long summaries should scroll rather than overflow the header strip.
+    // Wrap in a SimpleList so vertical scroll kicks in when content > 28px.
+    val summaryWidth = descColW - iconSize - 8
+    val summaryList = SimpleList()
+        .top(GUTTER + 28).left(textLeft).width(summaryWidth).height(28)
+        .child(
+            TextWidget(IKey.str(project.getSummary()))
+                .widthRel(1f)
+                .color(accent)
+                .alignment(com.cleanroommc.modularui.utils.Alignment.TopLeft)
+        )
 
-    val bodyTop = GUTTER + 56
+    val bodyTop = GUTTER + 64
     descriptionList
         .top(bodyTop).left(GUTTER).width(descColW).bottom(GUTTER)
         .background(Rectangle().color(descBackground))
@@ -179,7 +190,7 @@ class ProjectScreen(
         .child(projectIcon)
         .child(header)
         .child(authorLine)
-        .child(summary)
+        .child(summaryList)
         .child(descriptionList)
         .child(versionsHeader)
         .child(versionsList)
