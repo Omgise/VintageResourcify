@@ -55,6 +55,9 @@ class MarkdownImage(
 
     init {
         widthRel(1f)
+        if (linkUrl != null) {
+            tooltip().addLine(linkUrl)
+        }
     }
 
     override fun onMousePressed(mouseButton: Int): Interactable.Result {
