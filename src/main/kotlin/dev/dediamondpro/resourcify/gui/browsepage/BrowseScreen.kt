@@ -147,9 +147,26 @@ private fun buildCard(
             // displayGuiScreen, which mid-MUI2-event-dispatch leaves the
             // wrapper in a half-displayed state and never actually paints.
             Minecraft.getMinecraft().func_152344_a {
+                val mcBefore = Minecraft.getMinecraft().currentScreen
+                VintageResourcify.LOG.info(
+                    "Pre-open currentScreen={}",
+                    mcBefore?.javaClass?.simpleName,
+                )
                 try {
                     ClientGUI.open(ProjectScreen(project, packsFolder, sourceParent))
-                    VintageResourcify.LOG.info("ClientGUI.open(ProjectScreen) returned cleanly")
+                    val mcAfter = Minecraft.getMinecraft().currentScreen
+                    VintageResourcify.LOG.info(
+                        "ClientGUI.open(ProjectScreen) returned cleanly. currentScreen now={}",
+                        mcAfter?.javaClass?.simpleName,
+                    )
+                    // Also schedule one more tick to see if MC swapped properly.
+                    Minecraft.getMinecraft().func_152344_a {
+                        val mcLater = Minecraft.getMinecraft().currentScreen
+                        VintageResourcify.LOG.info(
+                            "One tick later currentScreen={}",
+                            mcLater?.javaClass?.simpleName,
+                        )
+                    }
                 } catch (t: Throwable) {
                     VintageResourcify.LOG.error("Opening ProjectScreen threw", t)
                 }
