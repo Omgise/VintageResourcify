@@ -149,24 +149,20 @@ private fun buildCard(
             Minecraft.getMinecraft().func_152344_a {
                 val mcBefore = Minecraft.getMinecraft().currentScreen
                 VintageResourcify.LOG.info(
-                    "Pre-open currentScreen={}",
+                    "Pre-open currentScreen={}@{}",
                     mcBefore?.javaClass?.simpleName,
+                    mcBefore?.let { Integer.toHexString(System.identityHashCode(it)) },
                 )
                 try {
-                    ClientGUI.open(ProjectScreen(project, packsFolder, sourceParent))
+                    val newScreen = ProjectScreen(project, packsFolder, sourceParent)
+                    ClientGUI.open(newScreen)
                     val mcAfter = Minecraft.getMinecraft().currentScreen
                     VintageResourcify.LOG.info(
-                        "ClientGUI.open(ProjectScreen) returned cleanly. currentScreen now={}",
+                        "ClientGUI.open returned cleanly. newProjectScreen={} currentScreen now={}@{}",
+                        Integer.toHexString(System.identityHashCode(newScreen)),
                         mcAfter?.javaClass?.simpleName,
+                        mcAfter?.let { Integer.toHexString(System.identityHashCode(it)) },
                     )
-                    // Also schedule one more tick to see if MC swapped properly.
-                    Minecraft.getMinecraft().func_152344_a {
-                        val mcLater = Minecraft.getMinecraft().currentScreen
-                        VintageResourcify.LOG.info(
-                            "One tick later currentScreen={}",
-                            mcLater?.javaClass?.simpleName,
-                        )
-                    }
                 } catch (t: Throwable) {
                     VintageResourcify.LOG.error("Opening ProjectScreen threw", t)
                 }
