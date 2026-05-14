@@ -63,6 +63,12 @@ class ProjectScreen(
     val descBackground = if (isLight) 0xFFF6F8FA.toInt() else 0xFF0D1117.toInt()
     val rowBackground = if (isLight) 0x10000000 else 0x20FFFFFF
     val accent = if (isLight) 0xFF1F2328.toInt() else 0xFFF0F6FC.toInt()
+    VintageResourcify.LOG.info(
+        "ProjectScreen theme={} accent=0x{} descBg=0x{}",
+        themeName,
+        Integer.toHexString(accent),
+        Integer.toHexString(descBackground),
+    )
 
     val descriptionList = SimpleList()
         .child(TextWidget(IKey.str("Loading description...")).color(accent))
@@ -102,17 +108,21 @@ class ProjectScreen(
                 val fr = Minecraft.getMinecraft().fontRenderer
                 matching.forEach { version: IVersion ->
                     val rawName = version.getName()
-                    val displayName = if (fr != null && fr.getStringWidth(rawName) > nameW)
-                        fr.trimStringToWidth(rawName + "...", nameW) else rawName
+                    val truncated = fr != null && fr.getStringWidth(rawName) > nameW
+                    val displayName = if (truncated)
+                        fr.trimStringToWidth(rawName, nameW - fr.getStringWidth("...")) + "..."
+                    else rawName
+                    val nameWidget = TextWidget(IKey.str(displayName))
+                        .left(nameLeft).width(nameW).heightRel(1f)
+                        .color(accent)
+                        .alignment(com.cleanroommc.modularui.utils.Alignment.CenterLeft)
+                    if (truncated) {
+                        nameWidget.tooltip().addLine(rawName)
+                    }
                     val row = Flow.row()
                         .widthRel(1f).height(22).margin(0, 0, 0, 3)
                         .background(Rectangle().color(rowBackground))
-                        .child(
-                            TextWidget(IKey.str(displayName))
-                                .left(nameLeft).width(nameW).heightRel(1f)
-                                .color(accent)
-                                .alignment(com.cleanroommc.modularui.utils.Alignment.CenterLeft)
-                        )
+                        .child(nameWidget)
                         .child(
                             SimpleButton()
                                 .size(buttonW, 16).right(buttonRightInset).top(3)
