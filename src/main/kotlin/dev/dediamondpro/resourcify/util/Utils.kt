@@ -25,6 +25,19 @@ import java.io.IOException
 import java.security.MessageDigest
 import java.security.NoSuchAlgorithmException
 
+fun Int.formatCompact(): String {
+    if (this < 1_000) return toString()
+    val (value, suffix) = when {
+        this < 1_000_000 -> this / 1_000.0 to "K"
+        this < 1_000_000_000 -> this / 1_000_000.0 to "M"
+        else -> this / 1_000_000_000.0 to "B"
+    }
+    val str = if (value >= 100) "%.0f".format(value)
+    else if (value >= 10) "%.1f".format(value).removeSuffix(".0")
+    else "%.2f".format(value).removeSuffix("0").removeSuffix("0").removeSuffix(".")
+    return "$str$suffix"
+}
+
 fun String.capitalizeAll(): String {
     return this.split(" ").joinToString(" ") { it.replaceFirstChar { c -> c.titlecase() } }
         .split("-").joinToString(" ") { it.replaceFirstChar { c -> c.titlecase() } }

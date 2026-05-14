@@ -35,6 +35,7 @@ data class CurseForgeProject(
     private val links: Links,
     private val categories: List<Category>,
     private val allowModDistribution: Boolean?,
+    private val downloadCount: Int = 0,
 ) : IProject {
     @Transient
     private var descriptionRequest: CompletableFuture<String>? = null
@@ -46,6 +47,7 @@ data class CurseForgeProject(
     override fun getId(): String = id.toString()
     override fun getSummary(): String = summary
     override fun getAuthor(): String = authors.firstOrNull()?.name ?: ""
+    override fun getDownloads(): Int = downloadCount
     override fun getIconUrl(): URL? = logo?.let { it.thumbnailUrl?.toURL() ?: it.url.toURL() }
     override fun getBannerUrl(): URL? = screenshots.firstOrNull()?.getThumbnailUrlIfEnabled()
 

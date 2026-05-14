@@ -26,6 +26,7 @@ interface IProject {
     fun getId(): String
     fun getSummary(): String
     fun getAuthor(): String
+    fun getDownloads(): Int = 0
     fun getIconUrl(): URL? = null
     fun getBannerUrl(): URL? = null
     fun getBannerColor(): Color? = null

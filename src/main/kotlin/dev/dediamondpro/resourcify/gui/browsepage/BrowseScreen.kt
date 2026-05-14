@@ -37,6 +37,7 @@ import dev.dediamondpro.resourcify.services.IProject
 import dev.dediamondpro.resourcify.services.ProjectType
 import dev.dediamondpro.resourcify.services.ServiceRegistry
 import dev.dediamondpro.resourcify.util.AsyncIcon
+import dev.dediamondpro.resourcify.util.formatCompact
 import dev.dediamondpro.resourcify.util.IrisHelper
 import dev.dediamondpro.resourcify.util.MultiThreading
 import net.minecraft.client.Minecraft
@@ -88,6 +89,11 @@ class BrowseScreen(
         }
     }
     val resultsList = SimpleList()
+    val filtersList = SimpleList()
+    // Holds the "Filters" + "Minecraft version" labels and the actual
+    // DropDownMenu, OUTSIDE of filtersList so the dropdown's open menu
+    // can render over the scroll list without ViewPort clipping issues.
+    val versionDropdownHolder = Container()
     // Pagination state. Modrinth and CurseForge both return one page per
     // search call (Modrinth: 20 per page); we append additional pages on
     // demand instead of fetching them all up front so an empty/broad query
@@ -97,6 +103,20 @@ class BrowseScreen(
     var loadingPage = false
     var currentQuery = ""
     var loadMoreBtn: IWidget? = null
+    // Filter state, kept generic so any IService.getCategories /
+    // getSortOptions shape works - we just round-trip ids back to the
+    // service in search(). Different platforms can ship different group
+    // names and category lists without UI changes.
+    val selectedCategories = mutableSetOf<String>()
+    var currentSort = defaultSortKey
+    // MC version filter. Default to whatever MC we're running on so the
+    // first search shows immediately-relevant results.
+    var currentMcVersions: List<String> = listOf(Platform.getMcVersion())
+    // Per-pill display names so the dynamic label supplier can show the
+    // human-readable name (e.g. "32x") rather than the raw id ("32x" too in
+    // some services, but other platforms use enum-style ids).
+    val categoryNames = mutableMapOf<String, String>()
+    val sortNames = mutableMapOf<String, String>()
 
     fun loadPage(append: Boolean) {
         if (loadingPage) return
@@ -118,9 +138,12 @@ class BrowseScreen(
         val offset = loadedCount
         val typeAtRequest = currentType
         val folderAtRequest = packsFolder
+        val sortAtRequest = currentSort
+        val categoriesAtRequest = selectedCategories.toList()
+        val mcVersionsAtRequest = currentMcVersions
         MultiThreading.supplyAsync {
             try {
-                service.search(query, defaultSortKey, listOf(Platform.getMcVersion()), emptyList(), offset, typeAtRequest)
+                service.search(query, sortAtRequest, mcVersionsAtRequest, categoriesAtRequest, offset, typeAtRequest)
             } catch (e: Exception) {
                 VintageResourcify.LOG.warn("Search failed", e)
                 null
@@ -178,16 +201,176 @@ class BrowseScreen(
     }
     refreshTabLabels()
 
+    // Compact pill: a centered overlay label that reflects selection state.
+    // We localize at display time so services can hand back raw i18n keys
+    // (Modrinth returns "resourcify.browse.sort.relevance" and friends).
+    // IKey.dynamic re-evaluates each frame, so toggling state updates the
+    // visible label without rebuilding the widget.
+    fun filterPill(
+        id: String, displayName: String,
+        isSelected: () -> Boolean,
+        onToggle: () -> Unit,
+    ): SimpleButton {
+        // Right margin clears the filtersList scrollbar (~6px); without it,
+        // the pill's right edge paints under the scroll track.
+        val btn = SimpleButton().widthRel(1f).height(12).margin(0, 7, 1, 1)
+        btn.overlay(IKey.dynamic {
+            val resolved = dev.dediamondpro.resourcify.util.localizeOrDefault(displayName, displayName)
+            if (isSelected()) "§f§l$resolved§r" else "§7$resolved§r"
+        })
+        btn.onMousePressed { b -> if (b == 0) { onToggle(); loadPage(append = false); true } else false }
+        return btn
+    }
+
+    // Re-fetch categories from the current service for the current type
+    // and rebuild the filter sidebar. The sidebar is fully driven by the
+    // service contract (getCategories + getSortOptions) so adding a new
+    // platform requires no UI changes.
+    fun rebuildFilters() {
+        categoryNames.clear()
+        sortNames.clear()
+        filtersList.removeAll()
+        versionDropdownHolder.removeAll()
+        versionDropdownHolder.child(
+            TextWidget(IKey.str("§lFilters§r")).color(textPrimary).top(0).left(0).widthRel(1f).height(10)
+        )
+        versionDropdownHolder.child(
+            TextWidget(IKey.str("§lMinecraft version§r")).color(textPrimary).top(12).left(0).widthRel(1f).height(10)
+        )
+
+        // Custom dropdown: a label button + a hidden ListWidget popup. We
+        // roll our own rather than use MUI2's DropDownMenu because the
+        // deprecated DropDownMenu's internal wrapper subclasses ScrollWidget
+        // with null scroll data and never gains real scroll behaviour, so
+        // any version list past ~10 entries simply gets clipped. ListWidget
+        // does initialise scroll data in onInit, so this popup scrolls.
+        val versionPlaceholder = TextWidget(IKey.str("§7Loading versions...§r")).color(textSecondary)
+            .top(24).left(0).widthRel(1f).height(14)
+        versionDropdownHolder.child(versionPlaceholder)
+        val typeAtVersions = currentType
+        service.getMinecraftVersions().thenAccept { versions ->
+            Minecraft.getMinecraft().func_152344_a {
+                if (typeAtVersions != currentType) return@func_152344_a
+                val ordered = LinkedHashMap<String, String>()
+                val mcv = Platform.getMcVersion()
+                if (versions.containsKey(mcv)) ordered[mcv] = versions[mcv] ?: mcv
+                versions.forEach { (id, name) -> ordered.putIfAbsent(id, name) }
+                // Keep the dropdown's display in sync with whatever the
+                // search uses. If the user picked a non-default version
+                // and the screen rebuilds (type switch resets to default,
+                // but other rebuild paths might preserve it), the visible
+                // button should match the filter state.
+                val preselected = currentMcVersions.firstOrNull()?.takeIf { ordered.containsKey(it) }
+                val selectedId = arrayOf(preselected ?: if (ordered.containsKey(mcv)) mcv else ordered.keys.first())
+                val popup = SimpleList()
+                    .top(40).left(0).widthRel(1f).height(135)
+                    .background(com.cleanroommc.modularui.drawable.Rectangle().color(0xFF1F2328.toInt()))
+                popup.setEnabled(false)
+                val button = SimpleButton().widthRel(1f).height(14).top(24).left(0)
+                button.overlay(IKey.dynamic { "${ordered[selectedId[0]] ?: selectedId[0]}  v" })
+                button.onMousePressed { b ->
+                    if (b == 0) {
+                        popup.setEnabled(!popup.isEnabled)
+                        val panel = filtersList.panel
+                        if (panel != null && panel.isValid) {
+                            com.cleanroommc.modularui.widget.WidgetTree.resizeInternal(panel.resizer(), false)
+                        }
+                        true
+                    } else false
+                }
+                for ((id, name) in ordered) {
+                    val opt = SimpleButton().widthRel(1f).height(12)
+                    opt.overlay(IKey.dynamic { if (selectedId[0] == id) "§f§l$name§r" else "§7$name§r" })
+                    opt.onMousePressed { b ->
+                        if (b == 0) {
+                            selectedId[0] = id
+                            currentMcVersions = listOf(id)
+                            popup.setEnabled(false)
+                            val panel = filtersList.panel
+                            if (panel != null && panel.isValid) {
+                                com.cleanroommc.modularui.widget.WidgetTree.resizeInternal(panel.resizer(), false)
+                            }
+                            loadPage(append = false)
+                            true
+                        } else false
+                    }
+                    popup.child(opt)
+                }
+                versionDropdownHolder.remove(versionPlaceholder)
+                versionDropdownHolder.child(button)
+                versionDropdownHolder.child(popup)
+                val panel = filtersList.panel
+                if (panel != null && panel.isValid) {
+                    com.cleanroommc.modularui.widget.WidgetTree.resizeInternal(panel.resizer(), false)
+                }
+            }
+        }
+
+        // Sort group: synchronous list from the service.
+        val sortOptions = service.getSortOptions()
+        if (sortOptions.isNotEmpty()) {
+            filtersList.child(TextWidget(IKey.str("§lSort by§r")).color(textPrimary).margin(0, 2, 0, 2))
+            for ((id, label) in sortOptions) {
+                sortNames[id] = label
+                val pill = filterPill(id, label, { id == currentSort }) { currentSort = id }
+                filtersList.child(pill)
+            }
+        }
+
+        // Categories: async because services may need a network round-trip
+        // (Modrinth caches the tag dump). Show a loading line until ready.
+        val loadingMarker = TextWidget(IKey.str("§7Loading categories...§r")).color(textSecondary).margin(0, 4, 0, 2)
+        filtersList.child(loadingMarker)
+        val typeAtRequest = currentType
+        service.getCategories(currentType).thenAccept { groups ->
+            Minecraft.getMinecraft().func_152344_a {
+                if (typeAtRequest != currentType) return@func_152344_a
+                filtersList.remove(loadingMarker)
+                if (groups.isEmpty()) {
+                    filtersList.child(TextWidget(IKey.str("§7(no categories)§r")).color(textSecondary))
+                    return@func_152344_a
+                }
+                for ((groupName, members) in groups) {
+                    if (members.isEmpty()) continue
+                    val header = TextWidget(IKey.str("§l${groupName.replaceFirstChar { it.uppercase() }}§r"))
+                        .color(textPrimary).margin(0, 6, 0, 2)
+                    filtersList.child(header)
+                    for ((id, displayName) in members) {
+                        categoryNames[id] = displayName
+                        val pill = filterPill(id, displayName, { id in selectedCategories }) {
+                            if (id in selectedCategories) selectedCategories.remove(id)
+                            else selectedCategories.add(id)
+                        }
+                        filtersList.child(pill)
+                    }
+                }
+            }
+        }
+    }
+
     fun switchType(t: ProjectType) {
         if (t == currentType) return
         currentType = t
         service = ServiceRegistry.getDefaultService(t)
         defaultSortKey = service.getSortOptions().keys.firstOrNull() ?: ""
+        currentSort = defaultSortKey
+        selectedCategories.clear()
+        // Fully reset the left panel: same default MC version, empty search
+        // query, no saved category selections, default sort. Without these
+        // the previous type's filters silently bleed into the new view
+        // even though the visible pills change.
+        currentMcVersions = listOf(Platform.getMcVersion())
+        searchBox.text = ""
         packsFolder = when (t) {
             ProjectType.IRIS_SHADER -> IrisHelper.getShaderpacksFolder()
             else -> Minecraft.getMinecraft().resourcePackRepository.dirResourcepacks
         }
         refreshTabLabels()
+        rebuildFilters()
+        // Snap the sidebar back to top so the new type's filters are
+        // visible from the first option (rather than wherever the user
+        // had scrolled in the old type's category list).
+        filtersList.scrollArea.scrollY?.scrollTo(filtersList.scrollArea, 0)
         loadPage(append = false)
     }
     packsTab.onMousePressed { b -> if (b == 0) { switchType(ProjectType.RESOURCE_PACK); true } else false }
@@ -207,15 +390,26 @@ class BrowseScreen(
         )
 
     triggerSearch = { loadPage(append = false) }
-    resultsList.top(50).left(10).right(10).bottom(10)
+    // versionDropdownHolder sits at the top of the sidebar slot. The
+    // dropdown's open menu paints downward and over the categories list;
+    // by keeping it OUTSIDE the scrollable filtersList we avoid scroll-
+    // viewport clipping. filtersList starts below it.
+    versionDropdownHolder.top(50).left(10).width(120).height(42)
+    filtersList.top(94).left(10).width(120).bottom(10)
+    resultsList.top(50).left(140).right(10).bottom(10)
         .child(TextWidget(IKey.str("Loading...")).color(textSecondary))
+    rebuildFilters()
     loadPage(append = false)
 
     ModularPanel.defaultPanel("vintage-resourcify-browse")
         .full()
         .child(tabRow)
         .child(searchRow)
+        .child(filtersList)
         .child(resultsList)
+        // versionDropdownHolder is declared LAST so its open dropdown menu
+        // paints over filtersList instead of being hidden behind it.
+        .child(versionDropdownHolder)
 })
 
 /** Project result card: thumbnail + title + author + summary, clickable. */
@@ -284,9 +478,12 @@ private fun buildCard(
     val rawSummary = project.getSummary()
     val mc = Minecraft.getMinecraft()
     val sr = ScaledResolution(mc, mc.displayWidth, mc.displayHeight)
-    // Panel uses .full(); list has 10px L/R, scrollbar ~12, card uses
-    // INNER_PAD on each side, icon column + 10px gap.
-    val summaryW = sr.scaledWidth - 32 - INNER_PAD * 2 - ICON_SIZE - 10
+    // Layout budget: panel uses .full(); filter sidebar takes left(10) +
+    // 120, then 10px gap, then the results list goes to right(10). Inside
+    // the list, scrollbar ~12, card uses INNER_PAD on each side, icon
+    // column + 10px gap before the text.
+    val resultsListWidth = sr.scaledWidth - (10 + 120 + 10) - 10
+    val summaryW = resultsListWidth - 12 - INNER_PAD * 2 - ICON_SIZE - 10
     val fr = mc.fontRenderer
     val summary = if (fr != null) {
         @Suppress("UNCHECKED_CAST")
@@ -323,7 +520,7 @@ private fun buildCard(
                 .alignment(com.cleanroommc.modularui.utils.Alignment.CenterLeft)
         )
         .child(
-            TextWidget(IKey.str("by ${project.getAuthor()}"))
+            TextWidget(IKey.str("by ${project.getAuthor()}  §8•§r  ${project.getDownloads().formatCompact()} downloads"))
                 .top(textTop + 11).left(textLeft).right(INNER_PAD).height(9)
                 .color(textSecondary)
                 .alignment(com.cleanroommc.modularui.utils.Alignment.CenterLeft)

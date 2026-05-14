@@ -33,6 +33,7 @@ import dev.dediamondpro.resourcify.services.IProject
 import dev.dediamondpro.resourcify.services.IVersion
 import dev.dediamondpro.resourcify.services.ProjectType
 import dev.dediamondpro.resourcify.util.AsyncIcon
+import dev.dediamondpro.resourcify.util.formatCompact
 import dev.dediamondpro.resourcify.util.DownloadManager
 import dev.dediamondpro.resourcify.util.IrisHelper
 import dev.dediamondpro.resourcify.util.MarkdownRenderer
@@ -164,8 +165,10 @@ class ProjectScreen(
     val textLeft = GUTTER + iconSize + 8
     val header = TextWidget(IKey.str(project.getName()).style(EnumChatFormatting.BOLD).scale(1.5f))
         .top(GUTTER).left(textLeft)
-    val authorLine = TextWidget(IKey.str("by ${project.getAuthor()}").style(EnumChatFormatting.GRAY))
-        .top(GUTTER + 16).left(textLeft)
+    val authorLine = TextWidget(
+        IKey.str("by ${project.getAuthor()}  §8•§r  ${project.getDownloads().formatCompact()} downloads")
+            .style(EnumChatFormatting.GRAY)
+    ).top(GUTTER + 16).left(textLeft)
     // Long summaries should scroll rather than overflow the header strip.
     // Wrap in a SimpleList so vertical scroll kicks in when content > 28px.
     val summaryWidth = descColW - iconSize - 8

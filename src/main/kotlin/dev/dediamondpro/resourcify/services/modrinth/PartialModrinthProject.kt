@@ -42,6 +42,7 @@ data class PartialModrinthProject(
     // current API; the field stays bytecode-named `id` so the rest of the
     // ported logic doesn't change.
     @SerializedName("project_id") private val id: String,
+    private val downloads: Int = 0,
 ) : IProject {
     @Transient
     private var projectRequest: CompletableFuture<FullModrinthProject?>? = null
@@ -56,6 +57,7 @@ data class PartialModrinthProject(
     override fun getId(): String = id
     override fun getSummary(): String = summary
     override fun getAuthor(): String = author
+    override fun getDownloads(): Int = downloads
     override fun getIconUrl(): URL? = iconUrl?.toURL()
     override fun getBannerUrl(): URL? = featuredGallery?.toURL() ?: gallery.firstOrNull()?.toURL()
     override fun getBannerColor(): Color? = color?.let { Color(it) }

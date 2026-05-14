@@ -66,6 +66,7 @@ data class FullModrinthProject(
     override fun getId(): String = id
     override fun getSummary(): String = description
     override fun getAuthor(): String = membersRequest?.getNow(null)?.firstOrNull()?.user?.name ?: ""
+    override fun getDownloads(): Int = downloads
 
     override fun getBrowserUrl(): String = "https://modrinth.com/$projectType/$slug"
 
