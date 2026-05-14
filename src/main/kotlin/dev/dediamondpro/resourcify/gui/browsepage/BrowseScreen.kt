@@ -143,11 +143,16 @@ private fun buildCard(
                 "BrowseScreen card clicked: {} (id={})",
                 project.getName(), project.getId(),
             )
-            try {
-                ClientGUI.open(ProjectScreen(project, packsFolder, sourceParent))
-                VintageResourcify.LOG.info("ClientGUI.open(ProjectScreen) returned cleanly")
-            } catch (t: Throwable) {
-                VintageResourcify.LOG.error("Opening ProjectScreen threw", t)
+            // Defer to next tick: ClientGUI.open immediately calls
+            // displayGuiScreen, which mid-MUI2-event-dispatch leaves the
+            // wrapper in a half-displayed state and never actually paints.
+            Minecraft.getMinecraft().func_152344_a {
+                try {
+                    ClientGUI.open(ProjectScreen(project, packsFolder, sourceParent))
+                    VintageResourcify.LOG.info("ClientGUI.open(ProjectScreen) returned cleanly")
+                } catch (t: Throwable) {
+                    VintageResourcify.LOG.error("Opening ProjectScreen threw", t)
+                }
             }
             true
         } else false
