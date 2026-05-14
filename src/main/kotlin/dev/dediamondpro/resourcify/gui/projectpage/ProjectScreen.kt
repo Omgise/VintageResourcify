@@ -85,12 +85,43 @@ class ProjectScreen(
 
     val header = TextWidget(IKey.str("${project.getName()} by ${project.getAuthor()}"))
         .top(6).left(8)
+    val summary = TextWidget(IKey.str(project.getSummary()))
+        .top(20).left(8).right(8)
+    val descriptionList = SimpleList()
+    descriptionList.top(36).left(8).right(8).height(60)
+        .child(TextWidget(IKey.str("Loading description...")))
 
-    versionsList.top(28).left(8).right(8).bottom(8)
+    // Markdown rendering was dropped with MineMark; we strip out formatting
+    // and show the first chunk of the body in a scrollable list of lines.
+    fun loadDescription() {
+        project.getDescription().thenAccept { rawMd ->
+            Minecraft.getMinecraft().func_152344_a {
+                descriptionList.removeAll()
+                val plain = rawMd
+                    .replace(Regex("!\\[[^\\]]*]\\([^)]*\\)"), "")
+                    .replace(Regex("\\[([^\\]]+)]\\([^)]*\\)"), "$1")
+                    .replace(Regex("[`*_>#~]"), "")
+                    .replace(Regex("\n{3,}"), "\n\n")
+                    .trim()
+                if (plain.isEmpty()) {
+                    descriptionList.child(TextWidget(IKey.str("(no description)")))
+                    return@func_152344_a
+                }
+                plain.lineSequence().take(40).forEach { line ->
+                    descriptionList.child(TextWidget(IKey.str(line)).widthRel(1f))
+                }
+            }
+        }
+    }
+
+    versionsList.top(100).left(8).right(8).bottom(8)
     loadVersions()
+    loadDescription()
 
     ModularPanel.defaultPanel("vintage-resourcify-project", 320, 220)
         .child(header)
+        .child(summary)
+        .child(descriptionList)
         .child(versionsList)
 })
 
