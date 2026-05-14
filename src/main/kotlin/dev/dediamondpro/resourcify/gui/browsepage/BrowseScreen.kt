@@ -68,6 +68,7 @@ class BrowseScreen(type: ProjectType) : ModularScreen(VintageResourcify.MODID, {
                     resultsColumn.child(
                         SimpleButton()
                             .height(14)
+                            .widthRel(1f)
                             .overlay(IKey.str("- ${project.getName()} by ${project.getAuthor()}"))
                             .onMousePressed { btn ->
                                 if (btn == 0) {
