@@ -59,15 +59,21 @@ object UrlOpener {
         }
         val mc = Minecraft.getMinecraft()
         if (mc.gameSettings.chatLinksPrompt) {
-            mc.displayGuiScreen(
-                GuiConfirmOpenLink(
-                    { result, _ ->
-                        if (result) openUri(uri)
-                        mc.displayGuiScreen(returnTo)
-                    },
-                    url, 0, false,
+            // Defer to next tick. Showing GuiConfirmOpenLink synchronously
+            // inside a MUI2 click handler interleaves the modal swap with
+            // MUI2's mouse-state bookkeeping, which surfaces as the dialog
+            // re-popping when the user dismisses it and then presses Escape.
+            mc.func_152344_a {
+                mc.displayGuiScreen(
+                    GuiConfirmOpenLink(
+                        { result, _ ->
+                            if (result) openUri(uri)
+                            mc.displayGuiScreen(returnTo)
+                        },
+                        url, 0, false,
+                    )
                 )
-            )
+            }
         } else {
             openUri(uri)
         }

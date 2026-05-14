@@ -61,8 +61,18 @@ class MarkdownImage(
     }
 
     override fun onMousePressed(mouseButton: Int): Interactable.Result {
+        // Only ACCEPT so onMouseTapped fires on release - opening the
+        // confirm dialog inside onMousePressed leaves MUI2's mouse state
+        // half-pressed and ends up replaying the click on the next
+        // released-anywhere event (which fires when the user dismisses the
+        // confirm and then presses Escape, etc.).
+        return if (linkUrl != null && mouseButton == 0) Interactable.Result.ACCEPT else Interactable.Result.IGNORE
+    }
+
+    override fun onMouseTapped(mouseButton: Int): Interactable.Result {
         if (mouseButton != 0 || linkUrl == null) return Interactable.Result.IGNORE
-        UrlOpener.openLinkPrompted(linkUrl, Minecraft.getMinecraft().currentScreen)
+        val current = Minecraft.getMinecraft().currentScreen
+        UrlOpener.openLinkPrompted(linkUrl, current)
         return Interactable.Result.SUCCESS
     }
 
@@ -105,7 +115,11 @@ class MarkdownImage(
         if (requested) return
         requested = true
         try {
-            url.getImageAsync(width = maxWidth.toFloat()).thenAccept { img ->
+            // Skip the wsrv.nl resize proxy. Same issue as AsyncIcon: certain
+            // PNGs (e.g. some imgur uploads) come back from the resize proxy
+            // with broken pixel data and render blank. Fetching the original
+            // is more reliable; we downscale at GL draw time.
+            url.getImageAsync().thenAccept { img ->
                 if (img == null) {
                     failed = true
                     return@thenAccept
