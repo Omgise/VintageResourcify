@@ -18,18 +18,27 @@
 package dev.dediamondpro.resourcify.gui.projectpage
 
 import com.cleanroommc.modularui.api.drawable.IKey
+import com.cleanroommc.modularui.api.drawable.IDrawable
+import com.cleanroommc.modularui.api.widget.Interactable
 import com.cleanroommc.modularui.api.widget.IWidget
+import com.cleanroommc.modularui.drawable.GuiDraw
 import com.cleanroommc.modularui.drawable.Rectangle
 import com.cleanroommc.modularui.screen.ModularPanel
 import com.cleanroommc.modularui.screen.ModularScreen
+import com.cleanroommc.modularui.screen.viewport.GuiContext
+import com.cleanroommc.modularui.screen.viewport.ModularGuiContext
+import com.cleanroommc.modularui.theme.WidgetTheme
+import com.cleanroommc.modularui.theme.WidgetThemeEntry
 import com.cleanroommc.modularui.widgets.ButtonWidget
 import com.cleanroommc.modularui.widgets.ListWidget
 import com.cleanroommc.modularui.widgets.TextWidget
 import com.cleanroommc.modularui.widget.ParentWidget
+import com.cleanroommc.modularui.widget.Widget
 import com.cleanroommc.modularui.widgets.layout.Flow
 import dev.dediamondpro.resourcify.VintageResourcify
 import dev.dediamondpro.resourcify.config.Config
 import dev.dediamondpro.resourcify.platform.Platform
+import dev.dediamondpro.resourcify.services.IGalleryImage
 import dev.dediamondpro.resourcify.services.IProject
 import dev.dediamondpro.resourcify.services.IVersion
 import dev.dediamondpro.resourcify.services.ProjectType
@@ -38,12 +47,24 @@ import dev.dediamondpro.resourcify.util.formatCompact
 import dev.dediamondpro.resourcify.util.DownloadManager
 import dev.dediamondpro.resourcify.util.IrisHelper
 import dev.dediamondpro.resourcify.util.MarkdownRenderer
+import dev.dediamondpro.resourcify.util.getImageAsync
+import dev.dediamondpro.resourcify.util.toURL
 import net.minecraft.client.Minecraft
+import net.minecraft.client.gui.Gui
 import net.minecraft.client.gui.GuiScreen
 import net.minecraft.client.gui.GuiScreenResourcePacks
 import net.minecraft.client.gui.ScaledResolution
+import net.minecraft.client.renderer.texture.DynamicTexture
+import net.minecraft.init.Items
+import net.minecraft.item.ItemStack
+import net.minecraft.util.ResourceLocation
 import net.minecraft.util.EnumChatFormatting
+import org.lwjgl.input.Keyboard
+import org.lwjgl.opengl.GL11
+import java.awt.image.BufferedImage
 import java.io.File
+import java.net.URL
+import java.util.concurrent.atomic.AtomicInteger
 
 private fun compareVersionDesc(a: String, b: String): Int {
     val aParts = a.split(".", "-").mapNotNull { it.toIntOrNull() }
@@ -61,6 +82,159 @@ private class SimpleButton : ButtonWidget<SimpleButton>()
 private class SimpleList : ListWidget<IWidget, SimpleList>()
 private class Container : ParentWidget<Container>()
 
+private class CenteredItemDrawable(
+    private val stack: ItemStack,
+    private val itemSize: Int,
+    private val xOffset: Float = 0f,
+    private val yOffset: Float = 0f,
+) : IDrawable {
+    override fun draw(context: GuiContext, x: Int, y: Int, width: Int, height: Int, widgetTheme: WidgetTheme) {
+        applyColor(widgetTheme.color)
+        GL11.glPushMatrix()
+        try {
+            GL11.glTranslatef(xOffset, yOffset, 0f)
+            GuiDraw.drawItem(
+                stack,
+                x + (width - itemSize) / 2,
+                y + (height - itemSize) / 2,
+                itemSize.toFloat(),
+                itemSize.toFloat(),
+                context.currentDrawingZ,
+            )
+        } finally {
+            GL11.glPopMatrix()
+        }
+    }
+}
+
+private class ResourcePackArrowDrawable(private val direction: Direction, private val hovered: Boolean) : IDrawable {
+    enum class Direction(val u: Float) {
+        RIGHT(0f),
+        LEFT(32f),
+    }
+
+    override fun draw(context: GuiContext, x: Int, y: Int, width: Int, height: Int, widgetTheme: WidgetTheme) {
+        applyColor(widgetTheme.color)
+        GL11.glEnable(GL11.GL_TEXTURE_2D)
+        GL11.glEnable(GL11.GL_BLEND)
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA)
+        Minecraft.getMinecraft().textureManager.bindTexture(TEXTURE)
+        GL11.glColor4f(1f, 1f, 1f, 1f)
+        Gui.func_146110_a(
+            x + (width - GALLERY_ARROW_SIZE) / 2,
+            y + (height - GALLERY_ARROW_SIZE) / 2,
+            direction.u,
+            if (hovered) 32f else 0f,
+            GALLERY_ARROW_SIZE,
+            GALLERY_ARROW_SIZE,
+            256f,
+            256f,
+        )
+    }
+
+    companion object {
+        private val TEXTURE = ResourceLocation("textures/gui/resource_packs.png")
+    }
+}
+
+private class GalleryImageWidget(
+    private val setStatus: (String?) -> Unit,
+) : Widget<GalleryImageWidget>(), Interactable {
+    private var requestedUrl: URL? = null
+    private var loadingUrl: URL? = null
+    private var failedUrl: URL? = null
+    private var texture: ResourceLocation? = null
+    private var imgW = 0
+    private var imgH = 0
+
+    fun show(url: URL?) {
+        requestedUrl = url
+        loadingUrl = null
+        failedUrl = null
+        texture = null
+        imgW = 0
+        imgH = 0
+        if (url == null) {
+            setStatus("Invalid gallery image")
+            return
+        }
+        setStatus("Loading image...")
+        ensureRequested()
+    }
+
+    override fun onMousePressed(mouseButton: Int): Interactable.Result {
+        return Interactable.Result.SUCCESS
+    }
+
+    override fun draw(context: ModularGuiContext, widgetTheme: WidgetThemeEntry<*>) {
+        ensureRequested()
+        val rl = texture ?: return
+        val w = imgW
+        val h = imgH
+        if (w <= 0 || h <= 0) return
+
+        val areaW = getArea().width.coerceAtLeast(1)
+        val areaH = getArea().height.coerceAtLeast(1)
+        val scale = minOf(areaW.toFloat() / w, areaH.toFloat() / h)
+        val drawW = (w * scale).toInt().coerceAtLeast(1)
+        val drawH = (h * scale).toInt().coerceAtLeast(1)
+        val drawX = (areaW - drawW) / 2
+        val drawY = (areaH - drawH) / 2
+
+        GL11.glEnable(GL11.GL_TEXTURE_2D)
+        GL11.glEnable(GL11.GL_BLEND)
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA)
+        Minecraft.getMinecraft().textureManager.bindTexture(rl)
+        GL11.glColor4f(1f, 1f, 1f, 1f)
+        Gui.func_152125_a(drawX, drawY, 0f, 0f, w, h, drawW, drawH, w.toFloat(), h.toFloat())
+    }
+
+    private fun ensureRequested() {
+        val url = requestedUrl ?: return
+        if (loadingUrl == url || failedUrl == url || texture != null) return
+        loadingUrl = url
+        try {
+            url.getImageAsync().whenComplete { img, error ->
+                Minecraft.getMinecraft().func_152344_a {
+                    if (!isValid() || requestedUrl != url) return@func_152344_a
+                    loadingUrl = null
+                    if (error != null || img == null) {
+                        VintageResourcify.LOG.warn("Failed to load gallery image {}", url, error)
+                        failedUrl = url
+                        setStatus("Failed to load image")
+                        return@func_152344_a
+                    }
+                    adoptImage(url, img)
+                }
+            }
+        } catch (e: Exception) {
+            loadingUrl = null
+            failedUrl = url
+            VintageResourcify.LOG.warn("Failed to request gallery image {}", url, e)
+            setStatus("Failed to load image")
+        }
+    }
+
+    private fun adoptImage(url: URL, img: BufferedImage) {
+        try {
+            val dt = DynamicTexture(img)
+            val name = "vresourcify_gallery_${idCounter.incrementAndGet()}"
+            texture = Minecraft.getMinecraft().textureManager.getDynamicTextureLocation(name, dt)
+            imgW = img.width
+            imgH = img.height
+            failedUrl = null
+            setStatus(null)
+        } catch (e: Exception) {
+            VintageResourcify.LOG.warn("Failed to register gallery image texture {}", url, e)
+            setStatus("Failed to load image")
+        }
+    }
+
+    companion object {
+        private val idCounter = AtomicInteger()
+    }
+}
+
 // Layout constants live here so the column edges line up across the header,
 // summary, body. Values are in GUI-scaled pixels.
 private const val GUTTER = 12
@@ -68,6 +242,12 @@ private const val COL_GAP = 12
 private const val DESC_REL_WIDTH = 0.62f
 private const val VER_REL_WIDTH = 1f - DESC_REL_WIDTH
 private const val DESC_PAD = 8
+private const val GALLERY_BUTTON_SIZE = 22
+private const val GALLERY_BUTTON_GAP = 4
+private const val GALLERY_BUTTON_RIGHT_NUDGE = 3
+private const val GALLERY_OVERLAY_MARGIN = 24
+private const val GALLERY_ARROW_SIZE = 32
+private const val GALLERY_ARROW_GAP = 8
 
 // See BrowseScreen's commit 8a9f9e5 for why all state lives in the lambda
 // closure rather than in instance fields.
@@ -104,7 +284,8 @@ class ProjectScreen(
     val descColW = (contentW * DESC_REL_WIDTH).toInt()
     val verColW = contentW - descColW
     val verColLeft = GUTTER + descColW + COL_GAP
-    val descTextW = descColW - DESC_PAD * 2 - 8 // 8 = scrollbar inset
+    val descListW = descColW - GALLERY_BUTTON_SIZE - GALLERY_BUTTON_GAP
+    val descTextW = descListW - DESC_PAD * 2 - 8 // 8 = scrollbar inset
 
     fun renderVersions() {
         versionsList.removeAll()
@@ -262,7 +443,7 @@ class ProjectScreen(
     ).top(GUTTER + 16).left(textLeft)
     // Long summaries should scroll rather than overflow the header strip.
     // Wrap in a SimpleList so vertical scroll kicks in when content > 28px.
-    val summaryWidth = descColW - iconSize - 8
+    val summaryWidth = (descListW - iconSize - 8).coerceAtLeast(20)
     val summaryList = SimpleList()
         .top(GUTTER + 28).left(textLeft).width(summaryWidth).height(28)
         .child(
@@ -274,9 +455,149 @@ class ProjectScreen(
 
     val bodyTop = GUTTER + 64
     descriptionList
-        .top(bodyTop).left(GUTTER).width(descColW).bottom(GUTTER)
+        .top(bodyTop).left(GUTTER).width(descListW).bottom(GUTTER)
         .background(Rectangle().color(descBackground))
         .padding(DESC_PAD, DESC_PAD, DESC_PAD, DESC_PAD)
+
+    val galleryMessage = arrayOf<String?>(null)
+    val galleryStatusHolder = arrayOf<IWidget?>(null)
+    fun setGalleryMessage(message: String?) {
+        galleryMessage[0] = message
+        galleryStatusHolder[0]?.setEnabled(message != null)
+    }
+
+    lateinit var galleryOverlay: Container
+    lateinit var galleryImage: GalleryImageWidget
+    var galleryLoading = false
+    val galleryImages = arrayOf<List<IGalleryImage>?>(null)
+    val galleryIndex = intArrayOf(0)
+
+    fun showGalleryImage(index: Int) {
+        val images = galleryImages[0].orEmpty()
+        if (images.isEmpty()) {
+            galleryImage.show(null)
+            setGalleryMessage("No gallery images")
+            return
+        }
+        galleryIndex[0] = (index + images.size) % images.size
+        galleryImage.show(images[galleryIndex[0]].url.toURL())
+    }
+
+    fun loadGalleryImages() {
+        if (galleryLoading) return
+        galleryLoading = true
+        setGalleryMessage("Loading gallery...")
+        project.getGalleryImages().whenComplete { images, error ->
+            Minecraft.getMinecraft().func_152344_a {
+                galleryLoading = false
+                if (!galleryOverlay.isValid() || !galleryOverlay.isEnabled) return@func_152344_a
+                if (error != null || images == null) {
+                    VintageResourcify.LOG.warn("Failed to load gallery for {}", project.getId(), error)
+                    galleryImages[0] = emptyList()
+                    setGalleryMessage("Failed to load gallery")
+                    return@func_152344_a
+                }
+                galleryImages[0] = images
+                showGalleryImage(0)
+            }
+        }
+    }
+
+    fun openGallery() {
+        galleryOverlay.setEnabled(true)
+        val images = galleryImages[0]
+        if (images != null) {
+            showGalleryImage(galleryIndex[0])
+        } else if (project.hasGallery()) {
+            loadGalleryImages()
+        } else {
+            galleryImages[0] = emptyList()
+            showGalleryImage(0)
+        }
+    }
+
+    fun moveGallery(delta: Int): Boolean {
+        val images = galleryImages[0].orEmpty()
+        if (images.isEmpty()) return true
+        showGalleryImage(galleryIndex[0] + delta)
+        return true
+    }
+
+    val galleryImageLeft = (GALLERY_OVERLAY_MARGIN + GALLERY_ARROW_SIZE + GALLERY_ARROW_GAP)
+        .coerceAtMost(sr0.scaledWidth / 4)
+    val galleryImageTop = GALLERY_OVERLAY_MARGIN.coerceAtMost(sr0.scaledHeight / 4)
+    val galleryImageW = (sr0.scaledWidth - 2 * galleryImageLeft).coerceAtLeast(32)
+    val galleryImageH = (sr0.scaledHeight - 2 * galleryImageTop).coerceAtLeast(32)
+
+    galleryOverlay = Container()
+        .top(0).left(0).width(sr0.scaledWidth).height(sr0.scaledHeight)
+    val galleryBackdrop = SimpleButton()
+        .top(0).left(0).width(sr0.scaledWidth).height(sr0.scaledHeight)
+        .background(Rectangle().color(0xAA000000.toInt()))
+        .disableHoverThemeBackground(true)
+        .playClickSound(false)
+        .onKeyPressed { _, keyCode ->
+            if (keyCode == Keyboard.KEY_ESCAPE) {
+                galleryOverlay.setEnabled(false)
+                true
+            } else false
+        }
+        .onMousePressed { btn ->
+            if (btn == 0 || btn == 1) {
+                galleryOverlay.setEnabled(false)
+                true
+            } else false
+        }
+    galleryImage = GalleryImageWidget(::setGalleryMessage)
+        .top(galleryImageTop).left(galleryImageLeft)
+        .width(galleryImageW).height(galleryImageH)
+    val galleryStatus = TextWidget(IKey.dynamic { galleryMessage[0] ?: "" })
+        .top(sr0.scaledHeight / 2 - 5).left(0)
+        .width(sr0.scaledWidth).height(10)
+        .color(0xFFFFFFFF.toInt())
+        .alignment(com.cleanroommc.modularui.utils.Alignment.Center)
+    galleryStatus.setEnabled(false)
+    galleryStatusHolder[0] = galleryStatus
+    val galleryLeft = SimpleButton()
+        .top(sr0.scaledHeight / 2 - GALLERY_ARROW_SIZE / 2)
+        .left(GALLERY_OVERLAY_MARGIN)
+        .size(GALLERY_ARROW_SIZE, GALLERY_ARROW_SIZE)
+        .disableThemeBackground(true)
+        .disableHoverThemeBackground(true)
+        .overlay(ResourcePackArrowDrawable(ResourcePackArrowDrawable.Direction.LEFT, false))
+        .hoverOverlay(ResourcePackArrowDrawable(ResourcePackArrowDrawable.Direction.LEFT, true))
+        .onMousePressed { btn -> if (btn == 0) moveGallery(-1) else false }
+    galleryLeft.tooltip().addLine("Previous image")
+    val galleryRight = SimpleButton()
+        .top(sr0.scaledHeight / 2 - GALLERY_ARROW_SIZE / 2)
+        .left(sr0.scaledWidth - GALLERY_OVERLAY_MARGIN - GALLERY_ARROW_SIZE)
+        .size(GALLERY_ARROW_SIZE, GALLERY_ARROW_SIZE)
+        .disableThemeBackground(true)
+        .disableHoverThemeBackground(true)
+        .overlay(ResourcePackArrowDrawable(ResourcePackArrowDrawable.Direction.RIGHT, false))
+        .hoverOverlay(ResourcePackArrowDrawable(ResourcePackArrowDrawable.Direction.RIGHT, true))
+        .onMousePressed { btn -> if (btn == 0) moveGallery(1) else false }
+    galleryRight.tooltip().addLine("Next image")
+    galleryOverlay
+        .child(galleryBackdrop)
+        .child(galleryImage)
+        .child(galleryStatus)
+        .child(galleryLeft)
+        .child(galleryRight)
+    galleryOverlay.setEnabled(false)
+
+    val galleryButton = SimpleButton()
+        .top(GUTTER + 16)
+        .left(GUTTER + descListW + GALLERY_BUTTON_GAP + GALLERY_BUTTON_RIGHT_NUDGE)
+        .size(GALLERY_BUTTON_SIZE, GALLERY_BUTTON_SIZE)
+        .overlay(CenteredItemDrawable(ItemStack(Items.painting), 20, xOffset = -0.5f))
+        .onMousePressed { btn ->
+            if (btn == 0) {
+                openGallery()
+                true
+            } else false
+        }
+    galleryButton.tooltip().addLine("View Gallery")
 
     val versionsHeader = TextWidget(IKey.str("Versions").style(EnumChatFormatting.BOLD))
         .top(bodyTop).left(verColLeft).width(verColW).height(14)
@@ -300,11 +621,13 @@ class ProjectScreen(
         .child(authorLine)
         .child(summaryList)
         .child(descriptionList)
+        .child(galleryButton)
         .child(versionsHeader)
         .child(versionsList)
         // Last child so the dropdown popup paints over versionsList rather
         // than being clipped behind it.
         .child(versionFilterHolder)
+        .child(galleryOverlay)
 })
 
 private fun install(
