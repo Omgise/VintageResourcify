@@ -69,6 +69,18 @@ class ProjectScreen(
     val versionsList = SimpleList()
         .child(TextWidget(IKey.str("Loading versions...")))
 
+    // Compute exact pixel column widths up front so both loadVersions and
+    // loadDescription can reference them. Mixing widthRel for two siblings
+    // against fixed left/right gutters means the columns overlap by 2*GUTTER
+    // pixels, so we use absolute pixel widths derived from ScaledResolution.
+    val mc0 = Minecraft.getMinecraft()
+    val sr0 = ScaledResolution(mc0, mc0.displayWidth, mc0.displayHeight)
+    val contentW = sr0.scaledWidth - 2 * GUTTER - COL_GAP
+    val descColW = (contentW * DESC_REL_WIDTH).toInt()
+    val verColW = contentW - descColW
+    val verColLeft = GUTTER + descColW + COL_GAP
+    val descTextW = descColW - DESC_PAD * 2 - 8 // 8 = scrollbar inset
+
     fun loadVersions() {
         project.getVersions().thenAccept { versions ->
             Minecraft.getMinecraft().func_152344_a {
@@ -79,18 +91,31 @@ class ProjectScreen(
                     versionsList.child(TextWidget(IKey.str("No $mcVersion versions available")))
                     return@func_152344_a
                 }
+                // Carve out exact pixel widths so the name doesn't run into
+                // the Install button. Truncate names that still don't fit so
+                // each row stays a single line.
+                val buttonW = 56
+                val buttonRightInset = 6
+                val nameLeft = 8
+                val nameRight = nameLeft + buttonW + buttonRightInset + 4
+                val nameW = (verColW - nameRight).coerceAtLeast(40)
+                val fr = Minecraft.getMinecraft().fontRenderer
                 matching.forEach { version: IVersion ->
+                    val rawName = version.getName()
+                    val displayName = if (fr != null && fr.getStringWidth(rawName) > nameW)
+                        fr.trimStringToWidth(rawName + "...", nameW) else rawName
                     val row = Flow.row()
-                        .widthRel(1f).height(24).margin(0, 0, 0, 4)
+                        .widthRel(1f).height(22).margin(0, 0, 0, 3)
                         .background(Rectangle().color(rowBackground))
                         .child(
-                            TextWidget(IKey.str(version.getName()))
-                                .left(8).widthRel(0.66f).heightRel(1f)
+                            TextWidget(IKey.str(displayName))
+                                .left(nameLeft).width(nameW).heightRel(1f)
+                                .color(accent)
                                 .alignment(com.cleanroommc.modularui.utils.Alignment.CenterLeft)
                         )
                         .child(
                             SimpleButton()
-                                .size(56, 16).right(6).top(4)
+                                .size(buttonW, 16).right(buttonRightInset).top(3)
                                 .overlay(IKey.str("Install"))
                                 .onMousePressed { btn ->
                                     if (btn == 0) {
@@ -104,20 +129,6 @@ class ProjectScreen(
             }
         }
     }
-
-    // Compute exact pixel column widths up front. Mixing widthRel for two
-    // siblings against fixed left/right gutters means the columns overlap by
-    // 2*GUTTER pixels (the relatives sum to 100% of parent, but each was
-    // already inset by a gutter). Switching to absolute pixel widths derived
-    // from ScaledResolution sidesteps the issue and lets MarkdownRenderer
-    // wrap to the exact column width.
-    val mc0 = Minecraft.getMinecraft()
-    val sr0 = ScaledResolution(mc0, mc0.displayWidth, mc0.displayHeight)
-    val contentW = sr0.scaledWidth - 2 * GUTTER - COL_GAP
-    val descColW = (contentW * DESC_REL_WIDTH).toInt()
-    val verColW = contentW - descColW
-    val verColLeft = GUTTER + descColW + COL_GAP
-    val descTextW = descColW - DESC_PAD * 2 - 8 // 8 = scrollbar inset
 
     fun loadDescription() {
         project.getDescription().thenAccept { rawMd ->
