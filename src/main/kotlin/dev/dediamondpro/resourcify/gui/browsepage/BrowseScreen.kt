@@ -148,10 +148,20 @@ private fun buildCard(
             // wrapper in a half-displayed state and never actually paints.
             Minecraft.getMinecraft().func_152344_a {
                 val mcBefore = Minecraft.getMinecraft().currentScreen
+                val muiBefore = try {
+                    val cls = Class.forName("com.cleanroommc.modularui.screen.ClientScreenHandler")
+                    val f = cls.getDeclaredField("currentScreen")
+                    f.isAccessible = true
+                    f.get(null)
+                } catch (e: Throwable) {
+                    "<reflection failed: ${e.message}>"
+                }
                 VintageResourcify.LOG.info(
-                    "Pre-open currentScreen={}@{}",
+                    "Pre-open mc.currentScreen={}@{} mui.currentScreen={}@{}",
                     mcBefore?.javaClass?.simpleName,
                     mcBefore?.let { Integer.toHexString(System.identityHashCode(it)) },
+                    muiBefore?.javaClass?.simpleName,
+                    muiBefore?.let { Integer.toHexString(System.identityHashCode(it)) },
                 )
                 try {
                     val newScreen = ProjectScreen(project, packsFolder, sourceParent)
