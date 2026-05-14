@@ -17,7 +17,11 @@
 
 package dev.dediamondpro.resourcify.platform
 
+import dev.dediamondpro.resourcify.VintageResourcify
+import dev.dediamondpro.resourcify.mixins.early.minecraft.AbstractResourcePackAccessor
 import net.minecraft.client.Minecraft
+import net.minecraft.client.resources.AbstractResourcePack
+import java.io.File
 
 object Platform {
 
@@ -28,5 +32,38 @@ object Platform {
 
     fun reloadResources() {
         Minecraft.getMinecraft().refreshResources()
+    }
+
+    // Find the repository entry whose backing pack file matches `file` and
+    // close its IResourcePack so its open ZipFile handle is released. Used
+    // before overwriting a pack on disk so Windows can replace the file and
+    // so MC's in-memory cache of the old pack is dropped.
+    fun closeResourcePack(file: File) {
+        val repo = Minecraft.getMinecraft().resourcePackRepository
+        repo.updateRepositoryEntriesAll()
+        for (entry in repo.repositoryEntriesAll) {
+            val pack = entry.resourcePack as? AbstractResourcePack ?: continue
+            if ((pack as AbstractResourcePackAccessor).resourcePackFile == file) {
+                entry.closeResourcePack()
+            }
+        }
+    }
+
+    // After downloading a replacement zip, force the matching entry to reload
+    // its IResourcePack from disk. Without this, MC keeps using the cached
+    // FileResourcePack instance, which has its own pre-existing ZipFile view.
+    fun reloadResourcePack(file: File) {
+        val repo = Minecraft.getMinecraft().resourcePackRepository
+        repo.updateRepositoryEntriesAll()
+        for (entry in repo.repositoryEntriesAll) {
+            val pack = entry.resourcePack as? AbstractResourcePack ?: continue
+            if ((pack as AbstractResourcePackAccessor).resourcePackFile == file) {
+                try {
+                    entry.updateResourcePack()
+                } catch (e: Exception) {
+                    VintageResourcify.LOG.warn("Failed to reload pack {}", file.name, e)
+                }
+            }
+        }
     }
 }

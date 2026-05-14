@@ -96,11 +96,15 @@ private fun install(version: IVersion, packsFolder: File) {
     if (!packsFolder.exists()) packsFolder.mkdirs()
     val target = File(packsFolder, version.getFileName())
     VintageResourcify.LOG.info("Installing {} -> {}", url, target)
+    // Release any existing zip handle for this filename so the download can
+    // overwrite (matters on Windows) and so MC drops the cached IResourcePack.
+    if (target.exists()) Platform.closeResourcePack(target)
     DownloadManager.download(target, version.getSha1(), url, false) {
         VintageResourcify.LOG.info("Install complete: {}", target.name)
         // DownloadManager fires the callback off the main thread; bounce to
         // it before touching Minecraft's resource manager.
         Minecraft.getMinecraft().func_152344_a {
+            Platform.reloadResourcePack(target)
             Platform.reloadResources()
         }
     }
