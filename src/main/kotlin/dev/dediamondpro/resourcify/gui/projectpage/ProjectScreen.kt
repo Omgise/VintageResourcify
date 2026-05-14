@@ -49,6 +49,7 @@ import dev.dediamondpro.resourcify.util.DownloadResult
 import dev.dediamondpro.resourcify.util.IrisHelper
 import dev.dediamondpro.resourcify.util.LocalIndex
 import dev.dediamondpro.resourcify.util.MarkdownRenderer
+import dev.dediamondpro.resourcify.util.UrlOpener
 import dev.dediamondpro.resourcify.util.getImageAsync
 import dev.dediamondpro.resourcify.util.toURL
 import net.minecraft.client.Minecraft
@@ -107,6 +108,33 @@ private class CenteredItemDrawable(
         } finally {
             GL11.glPopMatrix()
         }
+    }
+}
+
+private class CenteredTextureDrawable(
+    private val texture: ResourceLocation,
+    private val textureSize: Int,
+    private val iconSize: Int,
+) : IDrawable {
+    override fun draw(context: GuiContext, x: Int, y: Int, width: Int, height: Int, widgetTheme: WidgetTheme) {
+        applyColor(widgetTheme.color)
+        GL11.glEnable(GL11.GL_TEXTURE_2D)
+        GL11.glEnable(GL11.GL_BLEND)
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA)
+        Minecraft.getMinecraft().textureManager.bindTexture(texture)
+        GL11.glColor4f(1f, 1f, 1f, 1f)
+        Gui.func_152125_a(
+            x + (width - iconSize) / 2,
+            y + (height - iconSize) / 2,
+            0f,
+            0f,
+            textureSize,
+            textureSize,
+            iconSize,
+            iconSize,
+            textureSize.toFloat(),
+            textureSize.toFloat(),
+        )
     }
 }
 
@@ -297,12 +325,18 @@ private const val DESC_PAD = 8
 private const val GALLERY_BUTTON_SIZE = 22
 private const val GALLERY_BUTTON_GAP = 4
 private const val GALLERY_BUTTON_RIGHT_NUDGE = 3
+private const val HEADER_ACTION_BUTTON_COUNT = 2
+private const val HEADER_ACTION_BUTTONS_WIDTH =
+    GALLERY_BUTTON_SIZE * HEADER_ACTION_BUTTON_COUNT + GALLERY_BUTTON_GAP * (HEADER_ACTION_BUTTON_COUNT - 1)
+private const val GLOBE_ICON_TEXTURE_SIZE = 10
+private const val GLOBE_ICON_SIZE = 16
 private const val GALLERY_OVERLAY_MARGIN = 24
 private const val GALLERY_ARROW_SIZE = 32
 private const val GALLERY_ARROW_GAP = 8
 private const val DOWNLOAD_PANEL_W = 360
 private const val DOWNLOAD_PANEL_H = 286
 private const val DOWNLOAD_PANEL_PAD = 12
+private val GLOBE_TEXTURE = ResourceLocation(VintageResourcify.MODID, "globe.png")
 
 // See BrowseScreen's commit 8a9f9e5 for why all state lives in the lambda
 // closure rather than in instance fields.
@@ -339,7 +373,7 @@ class ProjectScreen(
     val descColW = (contentW * DESC_REL_WIDTH).toInt()
     val verColW = contentW - descColW
     val verColLeft = GUTTER + descColW + COL_GAP
-    val descListW = descColW - GALLERY_BUTTON_SIZE - GALLERY_BUTTON_GAP
+    val descListW = descColW - HEADER_ACTION_BUTTONS_WIDTH - GALLERY_BUTTON_GAP
     val descTextW = descListW - DESC_PAD * 2 - 8 // 8 = scrollbar inset
     val downloadPanelW = DOWNLOAD_PANEL_W.coerceAtMost(sr0.scaledWidth - 2 * GUTTER).coerceAtLeast(220)
     val downloadPanelH = DOWNLOAD_PANEL_H.coerceAtMost(sr0.scaledHeight - 2 * GUTTER).coerceAtLeast(180)
@@ -639,15 +673,30 @@ class ProjectScreen(
     val iconSize = 40
     val projectIcon = AsyncIcon(project.getIconUrl(), iconSize).top(GUTTER).left(GUTTER)
     val textLeft = GUTTER + iconSize + 8
+    val authorText = "by ${project.getAuthor()}  §8•§r  ${project.getDownloads().formatCompact()} downloads"
+    val font = Minecraft.getMinecraft().fontRenderer
+    val defaultGalleryButtonLeft = GUTTER + descListW + GALLERY_BUTTON_GAP + GALLERY_BUTTON_RIGHT_NUDGE
+    val maxGalleryButtonLeft = verColLeft - HEADER_ACTION_BUTTONS_WIDTH - GALLERY_BUTTON_GAP
+    val idealGalleryButtonLeft = textLeft + font.getStringWidth(authorText) + GALLERY_BUTTON_GAP
+    val galleryButtonLeft = idealGalleryButtonLeft
+        .coerceAtLeast(defaultGalleryButtonLeft)
+        .coerceAtMost(maxGalleryButtonLeft)
+    val globeButtonLeft = galleryButtonLeft + GALLERY_BUTTON_SIZE + GALLERY_BUTTON_GAP
+    val authorLineWidth = (galleryButtonLeft - textLeft - GALLERY_BUTTON_GAP).coerceAtLeast(20)
+    val displayedAuthorText = if (font.getStringWidth(authorText) <= authorLineWidth) {
+        authorText
+    } else {
+        font.trimStringToWidth(authorText, (authorLineWidth - font.getStringWidth("...")).coerceAtLeast(0)) + "..."
+    }
     val header = TextWidget(IKey.str(project.getName()).style(EnumChatFormatting.BOLD).scale(1.5f))
         .top(GUTTER).left(textLeft)
     val authorLine = TextWidget(
-        IKey.str("by ${project.getAuthor()}  §8•§r  ${project.getDownloads().formatCompact()} downloads")
+        IKey.str(displayedAuthorText)
             .style(EnumChatFormatting.GRAY)
-    ).top(GUTTER + 16).left(textLeft)
+    ).top(GUTTER + 16).left(textLeft).width(authorLineWidth).height(12)
     // Long summaries should scroll rather than overflow the header strip.
     // Wrap in a SimpleList so vertical scroll kicks in when content > 28px.
-    val summaryWidth = (descListW - iconSize - 8).coerceAtLeast(20)
+    val summaryWidth = (galleryButtonLeft - textLeft - GALLERY_BUTTON_GAP).coerceAtLeast(20)
     val summaryList = SimpleList()
         .top(GUTTER + 28).left(textLeft).width(summaryWidth).height(28)
         .child(
@@ -946,7 +995,7 @@ class ProjectScreen(
 
     val galleryButton = SimpleButton()
         .top(GUTTER + 16)
-        .left(GUTTER + descListW + GALLERY_BUTTON_GAP + GALLERY_BUTTON_RIGHT_NUDGE)
+        .left(galleryButtonLeft)
         .size(GALLERY_BUTTON_SIZE, GALLERY_BUTTON_SIZE)
         .overlay(CenteredItemDrawable(ItemStack(Items.painting), 20, xOffset = -0.5f))
         .onMousePressed { btn ->
@@ -956,6 +1005,19 @@ class ProjectScreen(
             } else false
         }
     galleryButton.tooltip().addLine("View Gallery")
+
+    val websiteButton = SimpleButton()
+        .top(GUTTER + 16)
+        .left(globeButtonLeft)
+        .size(GALLERY_BUTTON_SIZE, GALLERY_BUTTON_SIZE)
+        .overlay(CenteredTextureDrawable(GLOBE_TEXTURE, GLOBE_ICON_TEXTURE_SIZE, GLOBE_ICON_SIZE))
+        .onMousePressed { btn ->
+            if (btn == 0) {
+                UrlOpener.openLinkPrompted(project.getBrowserUrl(), Minecraft.getMinecraft().currentScreen)
+                true
+            } else false
+        }
+    websiteButton.tooltip().addLine("Open Project Page")
 
     val versionsHeader = TextWidget(IKey.str("Versions").style(EnumChatFormatting.BOLD))
         .top(bodyTop).left(verColLeft).width(verColW).height(14)
@@ -983,6 +1045,7 @@ class ProjectScreen(
         .child(summaryList)
         .child(descriptionList)
         .child(galleryButton)
+        .child(websiteButton)
         .child(versionsHeader)
         .child(versionsList)
         // Last child so the dropdown popup paints over versionsList rather
