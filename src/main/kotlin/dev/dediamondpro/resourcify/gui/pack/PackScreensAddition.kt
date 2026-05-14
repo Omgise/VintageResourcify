@@ -53,7 +53,7 @@ object PackScreensAddition {
         val (x, y) = buttonOrigin() ?: return
         if (mouseX !in x..(x + BUTTON_SIZE)) return
         if (mouseY !in y..(y + BUTTON_SIZE)) return
-        ClientGUI.open(BrowseScreen(type))
+        ClientGUI.open(BrowseScreen(type, folder))
     }
 
     private fun buttonOrigin(): Pair<Int, Int>? {

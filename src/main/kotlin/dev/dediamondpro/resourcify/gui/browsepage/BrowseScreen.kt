@@ -26,13 +26,16 @@ import com.cleanroommc.modularui.widgets.ListWidget
 import com.cleanroommc.modularui.widgets.TextWidget
 import com.cleanroommc.modularui.widgets.layout.Flow
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget
+import com.cleanroommc.modularui.factory.ClientGUI
 import dev.dediamondpro.resourcify.VintageResourcify
+import dev.dediamondpro.resourcify.gui.projectpage.ProjectScreen
 import dev.dediamondpro.resourcify.platform.Platform
 import dev.dediamondpro.resourcify.services.IProject
 import dev.dediamondpro.resourcify.services.ProjectType
 import dev.dediamondpro.resourcify.services.ServiceRegistry
 import dev.dediamondpro.resourcify.util.MultiThreading
 import net.minecraft.client.Minecraft
+import java.io.File
 
 // Concrete subclasses so the F-bounded self-types (W extends Self<W>) of
 // MUI2's fluent builders are satisfied. Self<Nothing>() / Self<*>() don't
@@ -42,7 +45,7 @@ private class SimpleList : ListWidget<IWidget, SimpleList>()
 
 // Entire screen state lives in this lambda's closure. See commit message of
 // 8a9f9e5 for why instance fields don't work with MUI2's super-init order.
-class BrowseScreen(type: ProjectType) : ModularScreen(VintageResourcify.MODID, { _ ->
+class BrowseScreen(type: ProjectType, packsFolder: File) : ModularScreen(VintageResourcify.MODID, { _ ->
     val service = ServiceRegistry.getDefaultService(type)
     val defaultSortKey = service.getSortOptions().keys.firstOrNull() ?: ""
 
@@ -76,10 +79,7 @@ class BrowseScreen(type: ProjectType) : ModularScreen(VintageResourcify.MODID, {
                             .overlay(IKey.str("- ${project.getName()} by ${project.getAuthor()}"))
                             .onMousePressed { btn ->
                                 if (btn == 0) {
-                                    VintageResourcify.LOG.info(
-                                        "Clicked project {} (ProjectScreen pending in next slice)",
-                                        project.getId()
-                                    )
+                                    ClientGUI.open(ProjectScreen(project, packsFolder))
                                     true
                                 } else false
                             }
