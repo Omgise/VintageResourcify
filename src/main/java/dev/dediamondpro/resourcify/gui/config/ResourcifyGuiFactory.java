@@ -14,7 +14,7 @@ public class ResourcifyGuiFactory implements IModGuiFactory {
 
     @Override
     public Class<? extends GuiScreen> mainConfigGuiClass() {
-        return SettingsGuiBridge.class;
+        return ResourcifyConfigGui.class;
     }
 
     @Override

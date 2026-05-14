@@ -19,6 +19,7 @@ package dev.dediamondpro.resourcify.gui.projectpage
 
 import com.cleanroommc.modularui.api.drawable.IKey
 import com.cleanroommc.modularui.api.widget.IWidget
+import com.cleanroommc.modularui.drawable.Rectangle
 import com.cleanroommc.modularui.screen.ModularPanel
 import com.cleanroommc.modularui.screen.ModularScreen
 import com.cleanroommc.modularui.widgets.ButtonWidget
@@ -26,6 +27,7 @@ import com.cleanroommc.modularui.widgets.ListWidget
 import com.cleanroommc.modularui.widgets.TextWidget
 import com.cleanroommc.modularui.widgets.layout.Flow
 import dev.dediamondpro.resourcify.VintageResourcify
+import dev.dediamondpro.resourcify.config.Config
 import dev.dediamondpro.resourcify.platform.Platform
 import dev.dediamondpro.resourcify.services.IProject
 import dev.dediamondpro.resourcify.services.IVersion
@@ -34,6 +36,7 @@ import dev.dediamondpro.resourcify.util.MarkdownRenderer
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiScreen
 import net.minecraft.client.gui.GuiScreenResourcePacks
+import net.minecraft.client.gui.ScaledResolution
 import net.minecraft.util.EnumChatFormatting
 import java.io.File
 
@@ -87,13 +90,15 @@ class ProjectScreen(
     }
 
     fun loadDescription() {
-        // Width: panel is full-screen; description column gets 60% of the
-        // content area. Account for the list's scrollbar and outer padding.
-        // We don't know exact pixel count here so use a conservative cap;
-        // the wrap target is just used to break lines, not to clip.
-        val width = (Minecraft.getMinecraft().displayWidth * 0.55 / 2).toInt().coerceAtLeast(200)
+        // Compute the actual GUI-scaled pixel width of the description column.
+        // The column is widthRel(0.58) of the panel which is full-screen, with
+        // 10px left padding. Subtract a scrollbar inset (~12px) and a small
+        // safety margin so wrapped text never overlaps the versions column.
+        val mc = Minecraft.getMinecraft()
+        val sr = ScaledResolution(mc, mc.displayWidth, mc.displayHeight)
+        val width = (sr.scaledWidth * 0.58).toInt() - 24
         project.getDescription().thenAccept { rawMd ->
-            Minecraft.getMinecraft().func_152344_a {
+            mc.func_152344_a {
                 descriptionList.removeAll()
                 if (rawMd.isBlank()) {
                     descriptionList.child(TextWidget(IKey.str("(no description)")))
@@ -118,8 +123,16 @@ class ProjectScreen(
     // children into the same cell, which left description and versions
     // overlapping. Anchoring left=description / right=versions guarantees
     // separation regardless of game window size.
+    // Solid color background matching the theme - readme should look like a
+    // GitHub page (white in light, dark gray in dark) rather than the MUI2
+    // panel's textured grey.
+    val descBackground = when (Config.instance.markdownTheme.lowercase()) {
+        "light" -> 0xFFF6F8FA.toInt()
+        else -> 0xFF0D1117.toInt()
+    }
     descriptionList
         .top(54).left(10).widthRel(0.58f).bottom(10)
+        .background(Rectangle().color(descBackground))
     val versionsHeader = TextWidget(IKey.str("Versions").style(EnumChatFormatting.BOLD))
         .top(54).right(10).widthRel(0.38f).height(12)
     versionsList
