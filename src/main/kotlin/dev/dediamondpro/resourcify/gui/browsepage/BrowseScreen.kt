@@ -34,10 +34,15 @@ import net.minecraft.client.Minecraft
 
 class BrowseScreen(private val type: ProjectType) : CustomModularScreen(VintageResourcify.MODID) {
 
-    private val service: IService = ServiceRegistry.getDefaultService(type)
-    private val resultsColumn: Flow = Flow.column().top(20).left(8).right(8).bottom(8)
+    // MUI2's super constructor invokes buildUI() before our property
+    // initializers run, so service + resultsColumn have to be lateinit and
+    // set inside buildUI itself.
+    private lateinit var service: IService
+    private lateinit var resultsColumn: Flow
 
     override fun buildUI(context: ModularGuiContext): ModularPanel {
+        service = ServiceRegistry.getDefaultService(type)
+        resultsColumn = Flow.column().top(20).left(8).right(8).bottom(8)
         val panel = ModularPanel.defaultPanel("vintage-resourcify-browse", 320, 220)
             .child(TextWidget(IKey.str("Resourcify $type browser")).top(6).left(8))
             .child(resultsColumn.child(TextWidget(IKey.str("Loading..."))))
