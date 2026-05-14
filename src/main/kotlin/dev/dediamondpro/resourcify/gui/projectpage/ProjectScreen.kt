@@ -31,6 +31,8 @@ import dev.dediamondpro.resourcify.services.IProject
 import dev.dediamondpro.resourcify.services.IVersion
 import dev.dediamondpro.resourcify.util.DownloadManager
 import net.minecraft.client.Minecraft
+import net.minecraft.client.gui.GuiScreen
+import net.minecraft.client.gui.GuiScreenResourcePacks
 import java.io.File
 
 private class SimpleButton : ButtonWidget<SimpleButton>()
@@ -38,7 +40,11 @@ private class SimpleList : ListWidget<IWidget, SimpleList>()
 
 // See BrowseScreen's commit 8a9f9e5 for why all state lives in the lambda
 // closure rather than in instance fields.
-class ProjectScreen(project: IProject, packsFolder: File) : ModularScreen(VintageResourcify.MODID, { _ ->
+class ProjectScreen(
+    project: IProject,
+    packsFolder: File,
+    sourceParent: GuiScreen?,
+) : ModularScreen(VintageResourcify.MODID, { _ ->
     val versionsList = SimpleList()
 
     fun loadVersions() {
@@ -66,7 +72,7 @@ class ProjectScreen(project: IProject, packsFolder: File) : ModularScreen(Vintag
                                 .overlay(IKey.str("Install"))
                                 .onMousePressed { btn ->
                                     if (btn == 0) {
-                                        install(version, packsFolder)
+                                        install(version, packsFolder, sourceParent)
                                         true
                                     } else false
                                 }
@@ -88,7 +94,7 @@ class ProjectScreen(project: IProject, packsFolder: File) : ModularScreen(Vintag
         .child(versionsList)
 })
 
-private fun install(version: IVersion, packsFolder: File) {
+private fun install(version: IVersion, packsFolder: File, sourceParent: GuiScreen?) {
     val url = version.getDownloadUrl() ?: run {
         VintageResourcify.LOG.warn("No download URL for version {}", version.getName())
         return
@@ -106,6 +112,12 @@ private fun install(version: IVersion, packsFolder: File) {
         Minecraft.getMinecraft().func_152344_a {
             Platform.reloadResourcePack(target)
             Platform.reloadResources()
+            // Pop back to a freshly-initialized resource pack screen so the
+            // user sees the new pack in the available list without manually
+            // re-navigating Options -> Resource Packs.
+            if (sourceParent != null) {
+                Minecraft.getMinecraft().displayGuiScreen(GuiScreenResourcePacks(sourceParent))
+            }
         }
     }
 }

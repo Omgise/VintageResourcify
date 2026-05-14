@@ -35,6 +35,8 @@ import dev.dediamondpro.resourcify.services.ProjectType
 import dev.dediamondpro.resourcify.services.ServiceRegistry
 import dev.dediamondpro.resourcify.util.MultiThreading
 import net.minecraft.client.Minecraft
+import net.minecraft.client.gui.GuiScreen
+import org.lwjgl.input.Keyboard
 import java.io.File
 
 // Concrete subclasses so the F-bounded self-types (W extends Self<W>) of
@@ -45,11 +47,25 @@ private class SimpleList : ListWidget<IWidget, SimpleList>()
 
 // Entire screen state lives in this lambda's closure. See commit message of
 // 8a9f9e5 for why instance fields don't work with MUI2's super-init order.
-class BrowseScreen(type: ProjectType, packsFolder: File) : ModularScreen(VintageResourcify.MODID, { _ ->
+class BrowseScreen(
+    type: ProjectType,
+    packsFolder: File,
+    sourceParent: GuiScreen?,
+) : ModularScreen(VintageResourcify.MODID, { _ ->
     val service = ServiceRegistry.getDefaultService(type)
     val defaultSortKey = service.getSortOptions().keys.firstOrNull() ?: ""
 
-    val searchBox = TextFieldWidget().size(180, 14)
+    // Lateinit so the EnterSubmitField below can call runSearch().
+    var triggerSearch: (() -> Unit)? = null
+    val searchBox = object : TextFieldWidget() {
+        override fun onKeyPressed(character: Char, keyCode: Int): com.cleanroommc.modularui.api.widget.Interactable.Result {
+            if (isFocused && (keyCode == Keyboard.KEY_RETURN || keyCode == Keyboard.KEY_NUMPADENTER)) {
+                triggerSearch?.invoke()
+                return com.cleanroommc.modularui.api.widget.Interactable.Result.SUCCESS
+            }
+            return super.onKeyPressed(character, keyCode)
+        }
+    }.size(180, 14)
     val resultsList = SimpleList()
 
     fun runSearch() {
@@ -79,7 +95,7 @@ class BrowseScreen(type: ProjectType, packsFolder: File) : ModularScreen(Vintage
                             .overlay(IKey.str("- ${project.getName()} by ${project.getAuthor()}"))
                             .onMousePressed { btn ->
                                 if (btn == 0) {
-                                    ClientGUI.open(ProjectScreen(project, packsFolder))
+                                    ClientGUI.open(ProjectScreen(project, packsFolder, sourceParent))
                                     true
                                 } else false
                             }
@@ -98,6 +114,7 @@ class BrowseScreen(type: ProjectType, packsFolder: File) : ModularScreen(Vintage
                 .onMousePressed { btn -> if (btn == 0) { runSearch(); true } else false }
         )
 
+    triggerSearch = ::runSearch
     resultsList.top(28).left(8).right(8).bottom(8)
         .child(TextWidget(IKey.str("Loading...")))
     runSearch()

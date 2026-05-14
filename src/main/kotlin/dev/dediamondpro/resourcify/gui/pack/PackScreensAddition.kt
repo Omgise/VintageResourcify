@@ -20,9 +20,11 @@ package dev.dediamondpro.resourcify.gui.pack
 import com.cleanroommc.modularui.factory.ClientGUI
 import dev.dediamondpro.resourcify.VintageResourcify
 import dev.dediamondpro.resourcify.gui.browsepage.BrowseScreen
+import dev.dediamondpro.resourcify.mixins.early.minecraft.PackScreenAccessor
 import dev.dediamondpro.resourcify.services.ProjectType
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.Gui
+import net.minecraft.client.gui.GuiScreen
 import net.minecraft.util.ResourceLocation
 import org.lwjgl.opengl.GL11
 import java.io.File
@@ -48,12 +50,15 @@ object PackScreensAddition {
         )
     }
 
-    fun onMouseClick(mouseX: Int, mouseY: Int, button: Int, type: ProjectType, folder: File) {
+    fun onMouseClick(mouseX: Int, mouseY: Int, button: Int, type: ProjectType, folder: File, screen: GuiScreen) {
         if (button != 0) return
         val (x, y) = buttonOrigin() ?: return
         if (mouseX !in x..(x + BUTTON_SIZE)) return
         if (mouseY !in y..(y + BUTTON_SIZE)) return
-        ClientGUI.open(BrowseScreen(type, folder))
+        // Capture the Options-menu parent so ProjectScreen can re-display a
+        // fresh GuiScreenResourcePacks after install.
+        val grandparent = (screen as PackScreenAccessor).parentScreen
+        ClientGUI.open(BrowseScreen(type, folder, grandparent))
     }
 
     private fun buttonOrigin(): Pair<Int, Int>? {

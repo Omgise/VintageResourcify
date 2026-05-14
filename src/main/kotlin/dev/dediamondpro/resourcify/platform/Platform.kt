@@ -19,6 +19,7 @@ package dev.dediamondpro.resourcify.platform
 
 import dev.dediamondpro.resourcify.VintageResourcify
 import dev.dediamondpro.resourcify.mixins.early.minecraft.AbstractResourcePackAccessor
+import dev.dediamondpro.resourcify.mixins.early.minecraft.ResourcePackEntryAccessor
 import net.minecraft.client.Minecraft
 import net.minecraft.client.resources.AbstractResourcePack
 import java.io.File
@@ -60,6 +61,11 @@ object Platform {
             if ((pack as AbstractResourcePackAccessor).resourcePackFile == file) {
                 try {
                     entry.updateResourcePack()
+                    // Null the cached ResourceLocation so bindTexturePackIcon
+                    // rebuilds a fresh DynamicTexture from the new pack image
+                    // (the BufferedImage in `texturePackIcon` was already
+                    // refreshed by updateResourcePack).
+                    (entry as ResourcePackEntryAccessor).setLocationTexturePackIcon(null)
                 } catch (e: Exception) {
                     VintageResourcify.LOG.warn("Failed to reload pack {}", file.name, e)
                 }

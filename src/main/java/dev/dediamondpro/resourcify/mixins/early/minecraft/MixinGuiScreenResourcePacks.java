@@ -1,6 +1,7 @@
 package dev.dediamondpro.resourcify.mixins.early.minecraft;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.GuiScreenResourcePacks;
 
 import org.spongepowered.asm.mixin.Mixin;
@@ -28,6 +29,7 @@ public class MixinGuiScreenResourcePacks {
             ProjectType.RESOURCE_PACK,
             Minecraft.getMinecraft()
                 .getResourcePackRepository()
-                .getDirResourcepacks());
+                .getDirResourcepacks(),
+            (GuiScreen) (Object) this);
     }
 }
