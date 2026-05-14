@@ -1,0 +1,21 @@
+{
+	"modListVersion": 2,
+	"modList": [{
+		"modid": "${modId}",
+		"name": "${modName}",
+		"description": "1.7.10 backport of DeDiamondPro's Resourcify — in-game resource pack browser for Modrinth and CurseForge.",
+		"version": "${modVersion}",
+		"mcversion": "${minecraftVersion}",
+		"url": "https://github.com/JackOfNoneTrades/VintageResourcify",
+		"updateUrl": "",
+		"authorList": ["DeDiamondPro", "jack"],
+		"credits": "GT:NH ExampleMod, FalsePattern (Forgelin Legacy), DeDiamondPro (upstream Resourcify)",
+		"logoFile": "assets/${modId}/logo.png",
+		"screenshots": [],
+		"parent": "",
+		"requiredMods": [],
+		"dependencies": [],
+		"dependants": [],
+		"useDependencyInformation": false
+	}]
+}

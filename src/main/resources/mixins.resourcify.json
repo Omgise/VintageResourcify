@@ -1,0 +1,9 @@
+{
+  "required": true,
+  "minVersion": "0.8.7-GTNH",
+  "package": "dev.dediamondpro.resourcify.mixins.mid",
+  "refmap": "mixins.resourcify.refmap.json",
+  "target": "@env(DEFAULT)",
+  "compatibilityLevel": "JAVA_8",
+  "client": []
+}
