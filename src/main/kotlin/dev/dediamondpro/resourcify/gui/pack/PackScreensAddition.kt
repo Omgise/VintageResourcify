@@ -38,8 +38,11 @@ import net.minecraft.util.ResourceLocation
 import org.lwjgl.input.Keyboard
 import org.lwjgl.input.Mouse
 import org.lwjgl.opengl.GL11
+import org.fentanylsolutions.fentlib.util.FileUtil
 import java.io.File
 import java.net.URL
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.Collections
 import java.util.Locale
 import java.util.WeakHashMap
@@ -61,6 +64,7 @@ object PackScreensAddition {
 
     private val PLUS_TEXTURE = ResourceLocation(VintageResourcify.MODID, "plus.png")
     private val UPDATE_TEXTURE = ResourceLocation(VintageResourcify.MODID, "update.png")
+    private val PICK_FILE_TEXTURE = ResourceLocation(VintageResourcify.MODID, "pick_file.png")
 
     @Volatile private var toastText: String? = null
     @Volatile private var toastUntil: Long = 0L
@@ -91,6 +95,11 @@ object PackScreensAddition {
         val (plusX, plusY) = plusOrigin() ?: return
         drawIconButton(plusX, plusY, PLUS_TEXTURE, mouseX, mouseY, enabled = true)
 
+        if (supportsPackFilePicking(type)) {
+            val (pickX, pickY) = pickOrigin() ?: return
+            drawIconButton(pickX, pickY, PICK_FILE_TEXTURE, mouseX, mouseY, enabled = true)
+        }
+
         if (type.hasUpdateButton) {
             val (upX, upY) = updateOrigin() ?: return
             drawIconButton(upX, upY, UPDATE_TEXTURE, mouseX, mouseY, enabled = true)
@@ -119,6 +128,14 @@ object PackScreensAddition {
         if (isInside(mouseX, mouseY, plus.first, plus.second, BUTTON_SIZE, BUTTON_SIZE)) {
             openBrowser(type, folder, screen)
             return true
+        }
+
+        if (supportsPackFilePicking(type)) {
+            val pick = pickOrigin() ?: return false
+            if (isInside(mouseX, mouseY, pick.first, pick.second, BUTTON_SIZE, BUTTON_SIZE)) {
+                pickAndCopyPackFile(type, folder)
+                return true
+            }
         }
 
         if (!type.hasUpdateButton) return false
@@ -203,6 +220,78 @@ object PackScreensAddition {
             else -> IrisHelper.getShaderScreenParent(screen)
         }
         ClientGUI.open(BrowseScreen(type, folder, grandparent))
+    }
+
+    private fun pickAndCopyPackFile(type: ProjectType, folder: File) {
+        showToast("Select a zip file...", durationMs = 4_000)
+        Thread({
+            val result = try {
+                FileUtil.pickFile("Select pack zip", FileUtil.getDefaultFileSelectionDirectory(), "zip")
+            } catch (e: Throwable) {
+                VintageResourcify.LOG.warn("File picker failed", e)
+                showToast("File picker failed", durationMs = 5_000)
+                return@Thread
+            }
+            when (result.status) {
+                FileUtil.FilePickerResult.Status.SELECTED -> {
+                    val source = result.file
+                    if (source == null) {
+                        showToast("No file selected", durationMs = 4_000)
+                        return@Thread
+                    }
+                    copyPickedPackFile(type, resolveImportFolder(type, folder), source)
+                }
+                FileUtil.FilePickerResult.Status.CANCELLED -> showToast("Import cancelled", durationMs = 3_000)
+                FileUtil.FilePickerResult.Status.UNAVAILABLE,
+                FileUtil.FilePickerResult.Status.ERROR ->
+                    showToast(result.message ?: "File picker failed", durationMs = 6_000)
+            }
+        }, "Resourcify-PackFilePicker").apply { isDaemon = true }.start()
+    }
+
+    private fun copyPickedPackFile(type: ProjectType, folder: File, source: File) {
+        try {
+            if (!folder.exists()) folder.mkdirs()
+            val target = File(folder, targetFileName(source.name))
+            if (sameFile(source, target)) {
+                showToast("File is already in this folder", durationMs = 4_000)
+                runClientSync { refreshHostPackScreen(type) }
+                return
+            }
+            if ((type == ProjectType.RESOURCE_PACK || type == ProjectType.AYCY_RESOURCE_PACK) && target.exists()) {
+                runClientSync {
+                    try {
+                        Platform.closeResourcePack(target)
+                    } catch (_: Throwable) {
+                    }
+                }
+            }
+            VintageResourcify.LOG.info("Importing pack file {} to {}", source, target)
+            Files.copy(source.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            showToast("Imported ${target.name}", durationMs = 5_000)
+            runClientSync { refreshHostPackScreen(type) }
+        } catch (e: Throwable) {
+            VintageResourcify.LOG.warn("Could not import pack file {}", source, e)
+            showToast("Import failed", durationMs = 5_000)
+        }
+    }
+
+    private fun resolveImportFolder(type: ProjectType, folder: File): File {
+        return when (type) {
+            ProjectType.RESOURCE_PACK,
+            ProjectType.AYCY_RESOURCE_PACK -> Minecraft.getMinecraft().resourcePackRepository.dirResourcepacks
+            ProjectType.IRIS_SHADER,
+            ProjectType.OPTIFINE_SHADER -> IrisHelper.getShaderpacksFolder()
+            else -> folder
+        }
+    }
+
+    private fun targetFileName(sourceName: String): String {
+        return if (sourceName.endsWith(".zip", ignoreCase = true) && !sourceName.endsWith(".zip")) {
+            sourceName.dropLast(4) + ".zip"
+        } else {
+            sourceName
+        }
     }
 
     private fun startUpdateCheck(type: ProjectType, folder: File, openPanel: Boolean) {
@@ -849,9 +938,14 @@ object PackScreensAddition {
         return (screen.width - BUTTON_SIZE - 4) to 4
     }
 
-    private fun updateOrigin(): Pair<Int, Int>? {
+    private fun pickOrigin(): Pair<Int, Int>? {
         val (px, py) = plusOrigin() ?: return null
         return (px - BUTTON_SIZE - BUTTON_GAP) to py
+    }
+
+    private fun updateOrigin(): Pair<Int, Int>? {
+        val (pickX, pickY) = pickOrigin() ?: return null
+        return (pickX - BUTTON_SIZE - BUTTON_GAP) to pickY
     }
 
     private fun runClientSync(action: () -> Unit) {
@@ -890,6 +984,16 @@ object PackScreensAddition {
     }
 
     private fun sameFile(a: File, b: File): Boolean = safeCanonical(a) == safeCanonical(b)
+
+    private fun supportsPackFilePicking(type: ProjectType): Boolean {
+        return when (type) {
+            ProjectType.RESOURCE_PACK,
+            ProjectType.AYCY_RESOURCE_PACK,
+            ProjectType.IRIS_SHADER,
+            ProjectType.OPTIFINE_SHADER -> true
+            else -> false
+        }
+    }
 
     private data class BottomButtons(
         val updateAllX: Int,
