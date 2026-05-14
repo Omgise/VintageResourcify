@@ -33,6 +33,7 @@ import dev.dediamondpro.resourcify.platform.Platform
 import dev.dediamondpro.resourcify.services.IProject
 import dev.dediamondpro.resourcify.services.ProjectType
 import dev.dediamondpro.resourcify.services.ServiceRegistry
+import dev.dediamondpro.resourcify.util.AsyncIcon
 import dev.dediamondpro.resourcify.util.MultiThreading
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiScreen
@@ -88,18 +89,25 @@ class BrowseScreen(
                     return@func_152344_a
                 }
                 projects.take(50).forEach { project ->
-                    resultsList.child(
-                        SimpleButton()
-                            .height(14)
-                            .widthRel(1f)
-                            .overlay(IKey.str("- ${project.getName()} by ${project.getAuthor()}"))
-                            .onMousePressed { btn ->
-                                if (btn == 0) {
-                                    ClientGUI.open(ProjectScreen(project, packsFolder, sourceParent))
-                                    true
-                                } else false
-                            }
-                    )
+                    val iconSize = 28
+                    val row = Flow.row()
+                        .widthRel(1f).height(32).margin(0, 0, 0, 4)
+                        .child(
+                            AsyncIcon(project.getIconUrl(), iconSize)
+                                .left(4).top(2)
+                        )
+                        .child(
+                            SimpleButton()
+                                .left(iconSize + 10).top(2).right(4).height(28)
+                                .overlay(IKey.str("${project.getName()}  -  by ${project.getAuthor()}"))
+                                .onMousePressed { btn ->
+                                    if (btn == 0) {
+                                        ClientGUI.open(ProjectScreen(project, packsFolder, sourceParent))
+                                        true
+                                    } else false
+                                }
+                        )
+                    resultsList.child(row)
                 }
             }
         }

@@ -31,6 +31,7 @@ import dev.dediamondpro.resourcify.config.Config
 import dev.dediamondpro.resourcify.platform.Platform
 import dev.dediamondpro.resourcify.services.IProject
 import dev.dediamondpro.resourcify.services.IVersion
+import dev.dediamondpro.resourcify.util.AsyncIcon
 import dev.dediamondpro.resourcify.util.DownloadManager
 import dev.dediamondpro.resourcify.util.MarkdownRenderer
 import net.minecraft.client.Minecraft
@@ -150,12 +151,15 @@ class ProjectScreen(
     loadVersions()
     loadDescription()
 
+    val iconSize = 40
+    val projectIcon = AsyncIcon(project.getIconUrl(), iconSize).top(GUTTER).left(GUTTER)
+    val textLeft = GUTTER + iconSize + 8
     val header = TextWidget(IKey.str(project.getName()).style(EnumChatFormatting.BOLD).scale(1.5f))
-        .top(GUTTER).left(GUTTER)
+        .top(GUTTER).left(textLeft)
     val authorLine = TextWidget(IKey.str("by ${project.getAuthor()}").style(EnumChatFormatting.GRAY))
-        .top(GUTTER + 16).left(GUTTER)
+        .top(GUTTER + 16).left(textLeft)
     val summary = TextWidget(IKey.str(project.getSummary()))
-        .top(GUTTER + 28).left(GUTTER).width(descColW)
+        .top(GUTTER + 28).left(textLeft).width(descColW - iconSize - 8)
         .alignment(com.cleanroommc.modularui.utils.Alignment.TopLeft)
 
     val bodyTop = GUTTER + 56
@@ -172,6 +176,7 @@ class ProjectScreen(
 
     ModularPanel.defaultPanel("vintage-resourcify-project")
         .full()
+        .child(projectIcon)
         .child(header)
         .child(authorLine)
         .child(summary)

@@ -58,14 +58,35 @@ object MarkdownRenderer {
 
     private val parser = Parser.builder().build()
     private val htmlTag = Regex("<[^>]+>")
+    // Catches <img ... src="..." ... alt="..."> with attributes in any order
+    // and optional self-close. Modrinth bodies frequently embed bare HTML img
+    // tags (with no surrounding markdown image syntax), so converting them up
+    // front before the generic htmlTag strip means commonmark can see them
+    // as Image nodes.
+    private val htmlImg = Regex(
+        """<img\b([^>]*?)/?>""",
+        RegexOption.IGNORE_CASE
+    )
+    private val attrSrc = Regex("""src\s*=\s*"([^"]*)"""", RegexOption.IGNORE_CASE)
+    private val attrAlt = Regex("""alt\s*=\s*"([^"]*)"""", RegexOption.IGNORE_CASE)
 
     fun render(markdown: String, widthPx: Int): List<IWidget> {
-        // Strip HTML tags first. Then strip leading whitespace on every line
-        // - the HTML strip leaves tabs from the original markup, and
-        // CommonMark interprets any line starting with 4+ spaces or a tab as
-        // an indented code block, so untouched indented HTML becomes a giant
-        // fake code block rendered in `theme.code` (red).
-        val cleaned = markdown.replace(htmlTag, "")
+        // 1. Promote bare HTML <img> tags to markdown ![alt](src) so commonmark
+        //    sees them as Image nodes instead of having them stripped silently.
+        // 2. Strip remaining HTML tags (links, divs, br, etc.). Surrounding
+        //    <a href> wrappers around images are dropped here - link target
+        //    is lost, but the image itself survives.
+        // 3. Strip leading whitespace per line. The HTML strip leaves tabs
+        //    from the original markup, and CommonMark treats any line with
+        //    4+ leading spaces or a tab as an indented code block (rendered
+        //    in `theme.code` red).
+        val withImages = htmlImg.replace(markdown) { m ->
+            val attrs = m.groupValues[1]
+            val src = attrSrc.find(attrs)?.groupValues?.getOrNull(1) ?: return@replace ""
+            val alt = attrAlt.find(attrs)?.groupValues?.getOrNull(1) ?: ""
+            "\n\n![$alt]($src)\n\n"
+        }
+        val cleaned = withImages.replace(htmlTag, "")
             .lineSequence()
             .joinToString("\n") { it.trimStart() }
         val doc = parser.parse(cleaned)
