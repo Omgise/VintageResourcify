@@ -1,4 +1,4 @@
-package dev.dediamondpro.resourcify.mixins.early;
+package dev.dediamondpro.resourcify.mixins.early.minecraft;
 
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.GuiScreenResourcePacks;
