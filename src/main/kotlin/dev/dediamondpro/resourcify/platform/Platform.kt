@@ -72,4 +72,25 @@ object Platform {
             }
         }
     }
+
+    fun enableResourcePack(file: File): Boolean {
+        val mc = Minecraft.getMinecraft()
+        val repo = mc.resourcePackRepository
+        repo.updateRepositoryEntriesAll()
+        val targetEntry = repo.repositoryEntriesAll.firstOrNull { entry ->
+            val pack = entry.resourcePack as? AbstractResourcePack ?: return@firstOrNull false
+            (pack as AbstractResourcePackAccessor).resourcePackFile == file
+        } ?: return false
+        val selected = repo.repositoryEntries.toMutableList()
+        if (!selected.contains(targetEntry)) {
+            selected.add(targetEntry)
+            repo.func_148527_a(selected)
+            mc.gameSettings.resourcePacks.clear()
+            selected.forEach { mc.gameSettings.resourcePacks.add(it.resourcePackName) }
+            mc.gameSettings.saveOptions()
+        }
+        reloadResourcePack(file)
+        reloadResources()
+        return true
+    }
 }

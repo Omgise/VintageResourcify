@@ -19,10 +19,20 @@ package dev.dediamondpro.resourcify.util
 
 import org.apache.commons.compress.archivers.zip.ZipFile
 import java.io.File
+import java.io.FileOutputStream
+import java.io.InputStream
 import java.net.URL
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.util.concurrent.CancellationException
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.atomic.AtomicBoolean
+
+enum class DownloadResult {
+    SUCCESS,
+    CANCELLED,
+    FAILED,
+}
 
 object DownloadManager {
     private val tempFolder = File("./resourcify-temp")
@@ -36,27 +46,39 @@ object DownloadManager {
     fun download(
         file: File, sha512: String? = null, url: URL,
         extract: Boolean = false, callback: (() -> Unit)? = null,
-    ) {
-        queuedDownloads[url] = QueuedDownload(file, sha512, extract, callback)
+    ): CompletableFuture<DownloadResult> {
+        val result = CompletableFuture<DownloadResult>()
+        queuedDownloads[url] = QueuedDownload(file, sha512, extract, callback, result)
         downloadNext()
+        return result
     }
 
     fun getProgress(url: URL): Float? {
         if (queuedDownloads.containsKey(url)) return 0f
         if (!downloadsInProgress.containsKey(url)) return null
         val length = downloadsInProgress[url]?.length ?: return 0f
+        if (length <= 0) return 0f
         return (downloadsInProgress[url]?.file?.length()?.toFloat() ?: 0f) / length
     }
 
     fun cancelDownload(url: URL) {
         if (queuedDownloads.containsKey(url)) {
-            queuedDownloads.remove(url)
+            queuedDownloads.remove(url)?.let {
+                it.cancelled.set(true)
+                it.result.complete(DownloadResult.CANCELLED)
+            }
             return
         }
-        if (!downloadsInProgress.containsKey(url)) return
-        downloadsInProgress[url]?.future?.cancel(true)
-        downloadsInProgress[url]?.file?.delete()
-        downloadsInProgress.remove(url)
+        val download = downloadsInProgress.remove(url) ?: return
+        download.cancelled.set(true)
+        try {
+            download.stream?.close()
+        } catch (_: Exception) {
+        }
+        download.future?.cancel(true)
+        download.file.delete()
+        download.result.complete(DownloadResult.CANCELLED)
+        downloadNext()
     }
 
     private fun downloadNext() {
@@ -65,22 +87,31 @@ object DownloadManager {
         val queuedDownload = queuedDownloads.remove(url) ?: return
         tempFolder.mkdirs()
         var tempFile = File(tempFolder, queuedDownload.file.name + ".tmp")
-        val i = 0
+        var i = 0
         while (tempFile.exists()) {
             tempFile = File(tempFolder, queuedDownload.file.name + "-$i.tmp")
+            i++
         }
-        downloadsInProgress[url] = DownloadData(runAsync {
+        val downloadData = DownloadData(tempFile, queuedDownload.cancelled, queuedDownload.result)
+        downloadsInProgress[url] = downloadData
+        downloadData.future = runAsync {
             val con = url.setupConnection()
-            downloadsInProgress[url]?.length = con.contentLength
-            con.getEncodedInputStream().use {
-                Files.copy(it!!, tempFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            downloadData.length = con.contentLength
+            con.getEncodedInputStream().use { input ->
+                if (input == null) error("No response body for $url")
+                downloadData.stream = input
+                FileOutputStream(tempFile).use { output ->
+                    copyCancellable(input, output, queuedDownload.cancelled)
+                }
             }
+            checkNotCancelled(queuedDownload.cancelled)
             queuedDownload.sha1?.let {
                 val hash = Utils.getSha1(tempFile)
                 if (hash == it) return@let
                 tempFile.delete()
                 error("Hash $hash does not match expected hash $it!")
             }
+            checkNotCancelled(queuedDownload.cancelled)
             if (queuedDownload.extract) {
                 val targetFolder = queuedDownload.file
                 targetFolder.mkdirs()
@@ -103,6 +134,7 @@ object DownloadManager {
                     }
 
                     zip.entries.asSequence().forEach { entry ->
+                        checkNotCancelled(queuedDownload.cancelled)
                         // Remove prefix so when a zip contains a folder which contains the actual files,
                         // this will handle it
                         val entryName =
@@ -124,23 +156,58 @@ object DownloadManager {
                     }
                 }
             } else {
+                checkNotCancelled(queuedDownload.cancelled)
                 Files.move(tempFile.toPath(), queuedDownload.file.toPath(), StandardCopyOption.REPLACE_EXISTING)
             }
             tempFile.delete()
             queuedDownload.callback?.let { it() }
         }.whenComplete { _, throwable ->
-            if (throwable != null) {
+            downloadData.stream = null
+            downloadsInProgress.remove(url)
+            if (queuedDownload.cancelled.get() || throwable is CancellationException) {
+                tempFile.delete()
+                queuedDownload.result.complete(DownloadResult.CANCELLED)
+            } else if (throwable != null) {
                 println("Download of $url failed:")
                 throwable.printStackTrace()
                 tempFile.delete()
-                return@whenComplete
+                queuedDownload.result.complete(DownloadResult.FAILED)
+            } else {
+                queuedDownload.result.complete(DownloadResult.SUCCESS)
             }
-            downloadsInProgress.remove(url)
             downloadNext()
-        }, tempFile)
+        }
+    }
+
+    private fun copyCancellable(input: InputStream, output: FileOutputStream, cancelled: AtomicBoolean) {
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        while (true) {
+            checkNotCancelled(cancelled)
+            val read = input.read(buffer)
+            if (read < 0) return
+            output.write(buffer, 0, read)
+        }
+    }
+
+    private fun checkNotCancelled(cancelled: AtomicBoolean) {
+        if (cancelled.get()) throw CancellationException("Download was cancelled")
     }
 }
 
-private data class QueuedDownload(val file: File, val sha1: String?, val extract: Boolean, val callback: (() -> Unit)?)
+private data class QueuedDownload(
+    val file: File,
+    val sha1: String?,
+    val extract: Boolean,
+    val callback: (() -> Unit)?,
+    val result: CompletableFuture<DownloadResult>,
+    val cancelled: AtomicBoolean = AtomicBoolean(false),
+)
 
-private data class DownloadData(val future: CompletableFuture<Void>, val file: File, var length: Int? = null)
+private data class DownloadData(
+    val file: File,
+    val cancelled: AtomicBoolean,
+    val result: CompletableFuture<DownloadResult>,
+    var future: CompletableFuture<Void>? = null,
+    var length: Int? = null,
+    @Volatile var stream: InputStream? = null,
+)

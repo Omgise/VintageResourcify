@@ -50,6 +50,7 @@ data class ModrinthVersion(
     private fun getPrimaryFile() = files.firstOrNull { it.primary } ?: files.first()
     override fun getDownloadUrl(): URL? = getPrimaryFile().url.toURL()
     override fun getFileName(): String = getPrimaryFile().filename
+    override fun getFileSize(): Long? = getPrimaryFile().size
     override fun getSha1(): String = getPrimaryFile().hashes.sha1
     override fun getChangeLog(): CompletableFuture<String> = supply { changelog }
     override fun getVersionType(): VersionType = VersionType.fromName(versionType)
@@ -77,7 +78,7 @@ data class ModrinthVersion(
         }.apply { dependenciesRequest = this }) as CompletableFuture<List<IDependency>>
     }
 
-    data class File(val url: String, val filename: String, val hashes: Hash, val primary: Boolean)
+    data class File(val url: String, val filename: String, val hashes: Hash, val primary: Boolean, val size: Long?)
 
     data class Hash(val sha1: String)
 

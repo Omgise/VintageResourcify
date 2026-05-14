@@ -28,6 +28,7 @@ data class CurseForgeVersion(
     private val displayName: String,
     private val fileName: String,
     private val downloadUrl: String?,
+    private val fileLength: Long? = null,
     private val hashes: List<Hash>,
     private val releaseType: Int,
     private val gameVersions: List<String>,
@@ -48,6 +49,7 @@ data class CurseForgeVersion(
     fun hasDownloadUrl(): Boolean = downloadUrl != null
     override fun getDownloadUrl(): URL? = downloadUrl?.toURL()
     override fun getFileName(): String = fileName
+    override fun getFileSize(): Long? = fileLength
     override fun getSha1(): String = hashes.firstOrNull { it.algo == 1 }?.value ?: ""
 
     override fun getChangeLog(): CompletableFuture<String> {

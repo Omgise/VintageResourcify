@@ -64,6 +64,22 @@ object IrisHelper {
         }
     }
 
+    fun enableShaderPack(file: File): Boolean {
+        val cls = irisClass ?: return false
+        return try {
+            val config = cls.getDeclaredMethod("getIrisConfig").invoke(null)
+            config.javaClass.getDeclaredMethod("setShaderPackName", String::class.java).invoke(config, file.name)
+            config.javaClass.getDeclaredMethod("setShadersEnabled", Boolean::class.javaPrimitiveType)
+                .invoke(config, true)
+            config.javaClass.getDeclaredMethod("save").invoke(config)
+            cls.getDeclaredMethod("reload").invoke(null)
+            true
+        } catch (e: Throwable) {
+            VintageResourcify.LOG.warn("Failed to enable shader pack {}", file.name, e)
+            false
+        }
+    }
+
     /** Reflect Iris ShaderPackScreen's private `parent` field so we can return there after install. */
     fun getShaderScreenParent(screen: GuiScreen): GuiScreen? {
         val cls = shaderScreenClass ?: return null

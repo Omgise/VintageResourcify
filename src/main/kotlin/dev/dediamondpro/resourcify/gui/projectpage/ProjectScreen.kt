@@ -45,7 +45,9 @@ import dev.dediamondpro.resourcify.services.ProjectType
 import dev.dediamondpro.resourcify.util.AsyncIcon
 import dev.dediamondpro.resourcify.util.formatCompact
 import dev.dediamondpro.resourcify.util.DownloadManager
+import dev.dediamondpro.resourcify.util.DownloadResult
 import dev.dediamondpro.resourcify.util.IrisHelper
+import dev.dediamondpro.resourcify.util.LocalIndex
 import dev.dediamondpro.resourcify.util.MarkdownRenderer
 import dev.dediamondpro.resourcify.util.getImageAsync
 import dev.dediamondpro.resourcify.util.toURL
@@ -64,6 +66,7 @@ import org.lwjgl.opengl.GL11
 import java.awt.image.BufferedImage
 import java.io.File
 import java.net.URL
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicInteger
 
 private fun compareVersionDesc(a: String, b: String): Int {
@@ -235,6 +238,55 @@ private class GalleryImageWidget(
     }
 }
 
+private class KeyCatcherWidget(private val onEscape: () -> Unit) : Widget<KeyCatcherWidget>(), Interactable {
+    override fun onMousePressed(mouseButton: Int): Interactable.Result {
+        return Interactable.Result.IGNORE
+    }
+
+    override fun onKeyPressed(typedChar: Char, keyCode: Int): Interactable.Result {
+        if (keyCode != Keyboard.KEY_ESCAPE) return Interactable.Result.IGNORE
+        onEscape()
+        return Interactable.Result.SUCCESS
+    }
+
+    override fun canClickThrough(): Boolean = true
+    override fun canHoverThrough(): Boolean = true
+}
+
+private class DownloadProgressBar(private val progress: () -> Float) : Widget<DownloadProgressBar>() {
+    override fun draw(context: ModularGuiContext, widgetTheme: WidgetThemeEntry<*>) {
+        val width = getArea().width.toFloat()
+        val height = getArea().height.toFloat()
+        if (width <= 0f || height <= 0f) return
+        GuiDraw.drawRect(0f, 0f, width, height, 0xFF1F2328.toInt())
+        GuiDraw.drawRect(1f, 1f, width - 2f, height - 2f, 0xFF59636E.toInt())
+        val filled = ((width - 2f) * progress().coerceIn(0f, 1f)).coerceAtLeast(0f)
+        if (filled > 0f) {
+            GuiDraw.drawRect(1f, 1f, filled, height - 2f, 0xFF3D6DCC.toInt())
+        }
+    }
+}
+
+private enum class DownloadPanelState {
+    READY,
+    DOWNLOADING,
+    CANCELLED,
+    FAILED,
+    DONE,
+}
+
+private fun formatFileSize(bytes: Long?): String {
+    if (bytes == null || bytes < 0) return "Unknown"
+    val units = arrayOf("B", "KiB", "MiB", "GiB")
+    var value = bytes.toDouble()
+    var unit = 0
+    while (value >= 1024.0 && unit < units.lastIndex) {
+        value /= 1024.0
+        unit++
+    }
+    return if (unit == 0) "${bytes} B" else String.format(Locale.ROOT, "%.1f %s", value, units[unit])
+}
+
 // Layout constants live here so the column edges line up across the header,
 // summary, body. Values are in GUI-scaled pixels.
 private const val GUTTER = 12
@@ -248,6 +300,9 @@ private const val GALLERY_BUTTON_RIGHT_NUDGE = 3
 private const val GALLERY_OVERLAY_MARGIN = 24
 private const val GALLERY_ARROW_SIZE = 32
 private const val GALLERY_ARROW_GAP = 8
+private const val DOWNLOAD_PANEL_W = 360
+private const val DOWNLOAD_PANEL_H = 286
+private const val DOWNLOAD_PANEL_PAD = 12
 
 // See BrowseScreen's commit 8a9f9e5 for why all state lives in the lambda
 // closure rather than in instance fields.
@@ -286,6 +341,158 @@ class ProjectScreen(
     val verColLeft = GUTTER + descColW + COL_GAP
     val descListW = descColW - GALLERY_BUTTON_SIZE - GALLERY_BUTTON_GAP
     val descTextW = descListW - DESC_PAD * 2 - 8 // 8 = scrollbar inset
+    val downloadPanelW = DOWNLOAD_PANEL_W.coerceAtMost(sr0.scaledWidth - 2 * GUTTER).coerceAtLeast(220)
+    val downloadPanelH = DOWNLOAD_PANEL_H.coerceAtMost(sr0.scaledHeight - 2 * GUTTER).coerceAtLeast(180)
+    val downloadPanelLeft = (sr0.scaledWidth - downloadPanelW) / 2
+    val downloadPanelTop = (sr0.scaledHeight - downloadPanelH) / 2
+    val downloadTextW = downloadPanelW - 2 * DOWNLOAD_PANEL_PAD - 8
+    val isShader = type == ProjectType.IRIS_SHADER || type == ProjectType.OPTIFINE_SHADER
+    val manageScreenLabel = if (isShader) "Go to Shaders" else "Go to Resource Packs"
+
+    lateinit var downloadOverlay: Container
+    lateinit var downloadChangelogList: SimpleList
+    val selectedDownloadVersion = arrayOf<IVersion?>(null)
+    val downloadState = arrayOf(DownloadPanelState.READY)
+    val downloadStatus = arrayOf("Ready to download")
+    val downloadUrl = arrayOf<URL?>(null)
+    val downloadedFile = arrayOf<File?>(null)
+    val downloadButtonHolder = arrayOf<SimpleButton?>(null)
+    val cancelButtonHolder = arrayOf<SimpleButton?>(null)
+    val enableButtonHolder = arrayOf<SimpleButton?>(null)
+    val manageButtonHolder = arrayOf<SimpleButton?>(null)
+    val closeButtonHolder = arrayOf<SimpleButton?>(null)
+    val progressBarHolder = arrayOf<IWidget?>(null)
+
+    fun updateDownloadWidgets() {
+        val state = downloadState[0]
+        downloadButtonHolder[0]?.setEnabled(
+            state == DownloadPanelState.READY ||
+                state == DownloadPanelState.CANCELLED ||
+                state == DownloadPanelState.FAILED
+        )
+        cancelButtonHolder[0]?.setEnabled(state == DownloadPanelState.DOWNLOADING)
+        enableButtonHolder[0]?.setEnabled(state == DownloadPanelState.DONE)
+        manageButtonHolder[0]?.setEnabled(state == DownloadPanelState.DONE)
+        closeButtonHolder[0]?.setEnabled(state != DownloadPanelState.DOWNLOADING)
+        progressBarHolder[0]?.setEnabled(state == DownloadPanelState.DOWNLOADING || state == DownloadPanelState.DONE)
+    }
+
+    fun setDownloadState(state: DownloadPanelState, status: String) {
+        downloadState[0] = state
+        downloadStatus[0] = status
+        updateDownloadWidgets()
+    }
+
+    fun currentDownloadProgress(): Float {
+        if (downloadState[0] == DownloadPanelState.DONE) return 1f
+        val url = downloadUrl[0] ?: return 0f
+        return DownloadManager.getProgress(url) ?: 0f
+    }
+
+    fun trimPanelText(text: String, width: Int): String {
+        val fr = Minecraft.getMinecraft().fontRenderer ?: return text
+        if (fr.getStringWidth(text) <= width) return text
+        return fr.trimStringToWidth(text, width - fr.getStringWidth("...")) + "..."
+    }
+
+    fun closeDownloadPanel() {
+        if (downloadState[0] == DownloadPanelState.DOWNLOADING) return
+        downloadOverlay.setEnabled(false)
+    }
+
+    fun completeDownload(version: IVersion, target: File, result: DownloadResult?, error: Throwable?) {
+        if (selectedDownloadVersion[0] !== version) return
+        when {
+            error != null || result == DownloadResult.FAILED -> {
+                VintageResourcify.LOG.warn("Download failed for {}", version.getFileName(), error)
+                setDownloadState(DownloadPanelState.FAILED, "Download failed")
+            }
+            result == DownloadResult.CANCELLED -> setDownloadState(DownloadPanelState.CANCELLED, "Download cancelled")
+            else -> {
+                try {
+                    LocalIndex.forFolder(packsFolder).record(target, platformId, project.getId())
+                } catch (e: Throwable) {
+                    VintageResourcify.LOG.warn("Failed to record install index entry", e)
+                }
+                downloadedFile[0] = target
+                setDownloadState(DownloadPanelState.DONE, "Download complete")
+            }
+        }
+    }
+
+    fun startDownload() {
+        if (downloadState[0] == DownloadPanelState.DOWNLOADING) return
+        val version = selectedDownloadVersion[0] ?: return
+        val url = version.getDownloadUrl() ?: run {
+            setDownloadState(DownloadPanelState.FAILED, "No download URL")
+            return
+        }
+        if (!packsFolder.exists()) packsFolder.mkdirs()
+        val target = File(packsFolder, version.getFileName())
+        if (!isShader && target.exists()) Platform.closeResourcePack(target)
+        downloadUrl[0] = url
+        downloadedFile[0] = target
+        setDownloadState(DownloadPanelState.DOWNLOADING, "Starting download...")
+        DownloadManager.download(target, version.getSha1(), url, false)
+            .whenComplete { result, error ->
+                Minecraft.getMinecraft().func_152344_a {
+                    completeDownload(version, target, result, error)
+                }
+            }
+    }
+
+    fun cancelDownload() {
+        if (downloadState[0] != DownloadPanelState.DOWNLOADING) return
+        downloadUrl[0]?.let { DownloadManager.cancelDownload(it) }
+        setDownloadState(DownloadPanelState.CANCELLED, "Download cancelled")
+    }
+
+    fun enableDownloaded(): Boolean {
+        val file = downloadedFile[0] ?: return true
+        val enabled = if (isShader) IrisHelper.enableShaderPack(file) else Platform.enableResourcePack(file)
+        downloadStatus[0] = if (enabled) "Enabled" else "Could not enable automatically"
+        return true
+    }
+
+    fun openManageScreen(): Boolean {
+        if (isShader) {
+            if (!IrisHelper.openShaderPackScreen(sourceParent) && sourceParent != null) {
+                Minecraft.getMinecraft().displayGuiScreen(sourceParent)
+            }
+        } else {
+            Minecraft.getMinecraft().displayGuiScreen(GuiScreenResourcePacks(sourceParent))
+        }
+        return true
+    }
+
+    fun loadChangelog(version: IVersion) {
+        downloadChangelogList.removeAll()
+        downloadChangelogList.child(TextWidget(IKey.str("Loading changelog...")).color(accent))
+        version.getChangeLog().whenComplete { changelog, error ->
+            Minecraft.getMinecraft().func_152344_a {
+                if (selectedDownloadVersion[0] !== version || !downloadOverlay.isValid()) return@func_152344_a
+                downloadChangelogList.removeAll()
+                if (error != null) {
+                    downloadChangelogList.child(TextWidget(IKey.str("Failed to load changelog")).color(accent))
+                    return@func_152344_a
+                }
+                if (changelog.isNullOrBlank()) {
+                    downloadChangelogList.child(TextWidget(IKey.str("(no changelog)")).color(accent))
+                    return@func_152344_a
+                }
+                MarkdownRenderer.render(changelog, downloadTextW).forEach { downloadChangelogList.child(it) }
+            }
+        }
+    }
+
+    fun openDownloadPanel(version: IVersion) {
+        selectedDownloadVersion[0] = version
+        downloadUrl[0] = null
+        downloadedFile[0] = null
+        setDownloadState(DownloadPanelState.READY, "Ready to download")
+        downloadOverlay.setEnabled(true)
+        loadChangelog(version)
+    }
 
     fun renderVersions() {
         versionsList.removeAll()
@@ -328,7 +535,7 @@ class ProjectScreen(
                         .overlay(IKey.str("Install"))
                         .onMousePressed { btn ->
                             if (btn == 0) {
-                                install(version, project, type, packsFolder, sourceParent, platformId)
+                                openDownloadPanel(version)
                                 true
                             } else false
                         }
@@ -428,9 +635,6 @@ class ProjectScreen(
             }
         }
     }
-
-    loadVersions()
-    loadDescription()
 
     val iconSize = 40
     val projectIcon = AsyncIcon(project.getIconUrl(), iconSize).top(GUTTER).left(GUTTER)
@@ -586,6 +790,160 @@ class ProjectScreen(
         .child(galleryRight)
     galleryOverlay.setEnabled(false)
 
+    val downloadPanelBg = if (isLight) 0xFFF0F2F4.toInt() else 0xFF1F2328.toInt()
+    val downloadButtonTop = downloadPanelTop + downloadPanelH - 28
+    val downloadProgressTop = downloadButtonTop - 16
+    val downloadStatusTop = downloadProgressTop - 12
+    val downloadChangelogTop = downloadPanelTop + 86
+    val downloadChangelogH = (downloadStatusTop - downloadChangelogTop - 6).coerceAtLeast(24)
+    val downloadInnerLeft = downloadPanelLeft + DOWNLOAD_PANEL_PAD
+    val downloadBackdrop = SimpleButton()
+        .top(0).left(0).width(sr0.scaledWidth).height(sr0.scaledHeight)
+        .background(Rectangle().color(0x66000000))
+        .disableHoverThemeBackground(true)
+        .playClickSound(false)
+        .onMousePressed { btn ->
+            if (btn == 0 || btn == 1) {
+                closeDownloadPanel()
+                true
+            } else false
+        }
+    val downloadPanelBackground = SimpleButton()
+        .top(downloadPanelTop).left(downloadPanelLeft).width(downloadPanelW).height(downloadPanelH)
+        .background(Rectangle().color(downloadPanelBg))
+        .disableHoverThemeBackground(true)
+        .playClickSound(false)
+        .onMousePressed { btn -> btn == 0 || btn == 1 }
+    downloadChangelogList = SimpleList()
+        .top(downloadChangelogTop).left(downloadInnerLeft)
+        .width(downloadTextW).height(downloadChangelogH)
+        .background(Rectangle().color(descBackground))
+        .padding(4, 4, 4, 4)
+    val downloadProgress = DownloadProgressBar(::currentDownloadProgress)
+        .top(downloadProgressTop).left(downloadInnerLeft)
+        .width(downloadTextW).height(8)
+    progressBarHolder[0] = downloadProgress
+    val downloadStatusText = TextWidget(IKey.dynamic {
+        val progress = (currentDownloadProgress() * 100f).toInt().coerceIn(0, 100)
+        if (downloadState[0] == DownloadPanelState.DOWNLOADING) "${downloadStatus[0]} ($progress%)"
+        else downloadStatus[0]
+    })
+        .top(downloadStatusTop).left(downloadInnerLeft).width(downloadTextW).height(10)
+        .color(accent)
+        .alignment(com.cleanroommc.modularui.utils.Alignment.CenterLeft)
+    val closeDownloadButton = SimpleButton()
+        .top(downloadButtonTop).left(downloadInnerLeft)
+        .size(50, 16)
+        .overlay(IKey.str("Close"))
+        .onMousePressed { btn ->
+            if (btn == 0) {
+                closeDownloadPanel()
+                true
+            } else false
+        }
+    closeButtonHolder[0] = closeDownloadButton
+    val startDownloadButton = SimpleButton()
+        .top(downloadButtonTop).left(downloadPanelLeft + downloadPanelW - DOWNLOAD_PANEL_PAD - 80)
+        .size(80, 16)
+        .overlay(IKey.dynamic {
+            if (downloadState[0] == DownloadPanelState.FAILED ||
+                downloadState[0] == DownloadPanelState.CANCELLED
+            ) "Retry" else "Download"
+        })
+        .onMousePressed { btn ->
+            if (btn == 0) {
+                startDownload()
+                true
+            } else false
+        }
+    downloadButtonHolder[0] = startDownloadButton
+    val cancelDownloadButton = SimpleButton()
+        .top(downloadButtonTop).left(downloadPanelLeft + downloadPanelW - DOWNLOAD_PANEL_PAD - 80)
+        .size(80, 16)
+        .overlay(IKey.str("Cancel"))
+        .onMousePressed { btn ->
+            if (btn == 0) {
+                cancelDownload()
+                true
+            } else false
+        }
+    cancelButtonHolder[0] = cancelDownloadButton
+    val enableDownloadButton = SimpleButton()
+        .top(downloadButtonTop).left(downloadInnerLeft + 56)
+        .size(64, 16)
+        .overlay(IKey.str("Enable"))
+        .onMousePressed { btn -> if (btn == 0) enableDownloaded() else false }
+    enableButtonHolder[0] = enableDownloadButton
+    val manageDownloadButton = SimpleButton()
+        .top(downloadButtonTop).left(downloadPanelLeft + downloadPanelW - DOWNLOAD_PANEL_PAD - 128)
+        .size(128, 16)
+        .overlay(IKey.str(manageScreenLabel))
+        .onMousePressed { btn -> if (btn == 0) openManageScreen() else false }
+    manageButtonHolder[0] = manageDownloadButton
+    downloadOverlay = Container()
+        .top(0).left(0).width(sr0.scaledWidth).height(sr0.scaledHeight)
+        .child(downloadBackdrop)
+        .child(downloadPanelBackground)
+        .child(
+            TextWidget(IKey.str("Download file").style(EnumChatFormatting.BOLD))
+                .top(downloadPanelTop + DOWNLOAD_PANEL_PAD).left(downloadInnerLeft)
+                .width(downloadTextW).height(12)
+                .color(accent)
+                .alignment(com.cleanroommc.modularui.utils.Alignment.CenterLeft)
+        )
+        .child(
+            TextWidget(IKey.dynamic {
+                val name = selectedDownloadVersion[0]?.getName() ?: ""
+                "Version: ${trimPanelText(name, downloadTextW - 48)}"
+            })
+                .top(downloadPanelTop + 30).left(downloadInnerLeft)
+                .width(downloadTextW).height(10)
+                .color(accent)
+                .alignment(com.cleanroommc.modularui.utils.Alignment.CenterLeft)
+        )
+        .child(
+            TextWidget(IKey.dynamic {
+                val fileName = selectedDownloadVersion[0]?.getFileName() ?: ""
+                "File: ${trimPanelText(fileName, downloadTextW - 30)}"
+            })
+                .top(downloadPanelTop + 42).left(downloadInnerLeft)
+                .width(downloadTextW).height(10)
+                .color(accent)
+                .alignment(com.cleanroommc.modularui.utils.Alignment.CenterLeft)
+        )
+        .child(
+            TextWidget(IKey.dynamic {
+                "Size: ${formatFileSize(selectedDownloadVersion[0]?.getFileSize())}"
+            })
+                .top(downloadPanelTop + 54).left(downloadInnerLeft)
+                .width(downloadTextW).height(10)
+                .color(accent)
+                .alignment(com.cleanroommc.modularui.utils.Alignment.CenterLeft)
+        )
+        .child(
+            TextWidget(IKey.str("Changelog").style(EnumChatFormatting.BOLD))
+                .top(downloadPanelTop + 70).left(downloadInnerLeft)
+                .width(downloadTextW).height(10)
+                .color(accent)
+                .alignment(com.cleanroommc.modularui.utils.Alignment.CenterLeft)
+        )
+        .child(downloadChangelogList)
+        .child(downloadStatusText)
+        .child(downloadProgress)
+        .child(closeDownloadButton)
+        .child(startDownloadButton)
+        .child(cancelDownloadButton)
+        .child(enableDownloadButton)
+        .child(manageDownloadButton)
+        .child(
+            KeyCatcherWidget {
+                if (downloadState[0] != DownloadPanelState.DOWNLOADING) closeDownloadPanel()
+            }
+                .top(0).left(0).width(sr0.scaledWidth).height(sr0.scaledHeight)
+        )
+    downloadOverlay.setEnabled(false)
+    updateDownloadWidgets()
+
     val galleryButton = SimpleButton()
         .top(GUTTER + 16)
         .left(GUTTER + descListW + GALLERY_BUTTON_GAP + GALLERY_BUTTON_RIGHT_NUDGE)
@@ -610,6 +968,9 @@ class ProjectScreen(
     versionsList
         .top(bodyTop + 50).left(verColLeft).width(verColW).bottom(GUTTER)
 
+    loadVersions()
+    loadDescription()
+
     VintageResourcify.LOG.info(
         "ProjectScreen lambda exit: building panel projectIcon={}",
         Integer.toHexString(System.identityHashCode(projectIcon)),
@@ -628,51 +989,5 @@ class ProjectScreen(
         // than being clipped behind it.
         .child(versionFilterHolder)
         .child(galleryOverlay)
+        .child(downloadOverlay)
 })
-
-private fun install(
-    version: IVersion,
-    project: IProject,
-    type: ProjectType,
-    packsFolder: File,
-    sourceParent: GuiScreen?,
-    platformId: String,
-) {
-    val url = version.getDownloadUrl() ?: run {
-        VintageResourcify.LOG.warn("No download URL for version {}", version.getName())
-        return
-    }
-    if (!packsFolder.exists()) packsFolder.mkdirs()
-    val target = File(packsFolder, version.getFileName())
-    VintageResourcify.LOG.info("Installing {} -> {}", url, target)
-    val isShader = type == ProjectType.IRIS_SHADER || type == ProjectType.OPTIFINE_SHADER
-    if (!isShader && target.exists()) Platform.closeResourcePack(target)
-    DownloadManager.download(target, version.getSha1(), url, false) {
-        VintageResourcify.LOG.info("Install complete: {}", target.name)
-        // Record into the per-folder install index so update + source-icon
-        // overlays know which platform/project this file came from.
-        try {
-            dev.dediamondpro.resourcify.util.LocalIndex
-                .forFolder(packsFolder)
-                .record(target, platformId, project.getId())
-        } catch (e: Throwable) {
-            VintageResourcify.LOG.warn("Failed to record install index entry", e)
-        }
-        Minecraft.getMinecraft().func_152344_a {
-            if (isShader) {
-                // Shaders are picked up on next ShaderPackScreen open; no
-                // ResourcePackRepository handle to refresh. Just return the
-                // user to Iris's screen so they can apply the new pack.
-                if (!IrisHelper.openShaderPackScreen(sourceParent) && sourceParent != null) {
-                    Minecraft.getMinecraft().displayGuiScreen(sourceParent)
-                }
-            } else {
-                Platform.reloadResourcePack(target)
-                Platform.reloadResources()
-                if (sourceParent != null) {
-                    Minecraft.getMinecraft().displayGuiScreen(GuiScreenResourcePacks(sourceParent))
-                }
-            }
-        }
-    }
-}
