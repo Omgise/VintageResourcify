@@ -164,8 +164,9 @@ class BrowseScreen(
                     return@func_152344_a
                 }
                 val platformIdAtRequest = service.getPlatformId()
+                val mcVersionAtRequest = mcVersionsAtRequest.firstOrNull() ?: Platform.getMcVersion()
                 projects.forEach { project ->
-                    resultsList.child(buildCard(project, typeAtRequest, folderAtRequest, sourceParent, platformIdAtRequest, cardBg, textPrimary, textSecondary))
+                    resultsList.child(buildCard(project, typeAtRequest, folderAtRequest, sourceParent, platformIdAtRequest, mcVersionAtRequest, cardBg, textPrimary, textSecondary))
                 }
                 loadedCount += projects.size
                 if (loadedCount < totalCount && projects.isNotEmpty()) {
@@ -485,6 +486,7 @@ private fun buildCard(
     packsFolder: File,
     sourceParent: GuiScreen?,
     platformId: String,
+    initialMcVersion: String,
     cardBg: Int,
     textPrimary: Int,
     textSecondary: Int,
@@ -516,7 +518,7 @@ private fun buildCard(
                     muiBefore?.let { Integer.toHexString(System.identityHashCode(it)) },
                 )
                 try {
-                    val newScreen = ProjectScreen(project, type, packsFolder, sourceParent, platformId)
+                    val newScreen = ProjectScreen(project, type, packsFolder, sourceParent, platformId, initialMcVersion)
                     // Go through MUI2's official entry point so UISettings,
                     // recipe-viewer integration, etc. get wired up. Calling
                     // displayGuiScreen on a hand-constructed wrapper skips
@@ -567,6 +569,15 @@ private fun buildCard(
     } else {
         if (rawSummary.length > 130) rawSummary.take(127) + "..." else rawSummary
     }
+    // Title: hard single-line. .height(10) doesn't stop TextWidget from
+    // wrapping a long title onto a second line that collides with the author
+    // row, so trim explicitly. Bold glyphs are ~1px wider, so we measure
+    // against the bold-formatted string.
+    val rawTitle = project.getName()
+    val title = if (fr != null && fr.getStringWidth("§l$rawTitle") > summaryW) {
+        fr.trimStringToWidth("§l$rawTitle", (summaryW - fr.getStringWidth("...")).coerceAtLeast(20))
+            .removePrefix("§l") + "..."
+    } else rawTitle
     // Vertically center the icon and right-side text column inside the
     // CARD_HEIGHT box. The text column is 36px tall (title 10 + author 9 +
     // summary 17), centered.
@@ -580,7 +591,7 @@ private fun buildCard(
                 .top(iconTop).left(INNER_PAD)
         )
         .child(
-            TextWidget(IKey.str(project.getName()).style(EnumChatFormatting.BOLD))
+            TextWidget(IKey.str(title).style(EnumChatFormatting.BOLD))
                 .top(textTop).left(textLeft).right(INNER_PAD).height(10)
                 .color(textPrimary)
                 .alignment(com.cleanroommc.modularui.utils.Alignment.CenterLeft)

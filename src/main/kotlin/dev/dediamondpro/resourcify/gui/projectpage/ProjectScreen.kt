@@ -25,6 +25,7 @@ import com.cleanroommc.modularui.screen.ModularScreen
 import com.cleanroommc.modularui.widgets.ButtonWidget
 import com.cleanroommc.modularui.widgets.ListWidget
 import com.cleanroommc.modularui.widgets.TextWidget
+import com.cleanroommc.modularui.widget.ParentWidget
 import com.cleanroommc.modularui.widgets.layout.Flow
 import dev.dediamondpro.resourcify.VintageResourcify
 import dev.dediamondpro.resourcify.config.Config
@@ -44,8 +45,21 @@ import net.minecraft.client.gui.ScaledResolution
 import net.minecraft.util.EnumChatFormatting
 import java.io.File
 
+private fun compareVersionDesc(a: String, b: String): Int {
+    val aParts = a.split(".", "-").mapNotNull { it.toIntOrNull() }
+    val bParts = b.split(".", "-").mapNotNull { it.toIntOrNull() }
+    val len = maxOf(aParts.size, bParts.size)
+    for (i in 0 until len) {
+        val av = aParts.getOrNull(i) ?: 0
+        val bv = bParts.getOrNull(i) ?: 0
+        if (av != bv) return bv - av
+    }
+    return b.compareTo(a)
+}
+
 private class SimpleButton : ButtonWidget<SimpleButton>()
 private class SimpleList : ListWidget<IWidget, SimpleList>()
+private class Container : ParentWidget<Container>()
 
 // Layout constants live here so the column edges line up across the header,
 // summary, body. Values are in GUI-scaled pixels.
@@ -63,6 +77,7 @@ class ProjectScreen(
     packsFolder: File,
     sourceParent: GuiScreen?,
     platformId: String,
+    initialMcVersion: String = Platform.getMcVersion(),
 ) : ModularScreen(VintageResourcify.MODID, { _ ->
     VintageResourcify.LOG.info("ProjectScreen lambda entry: project={}", project.getId())
     val themeName = Config.instance.markdownTheme.lowercase()
@@ -75,6 +90,9 @@ class ProjectScreen(
         .child(TextWidget(IKey.str("Loading description...")).color(accent))
     val versionsList = SimpleList()
         .child(TextWidget(IKey.str("Loading versions...")))
+    val versionFilterHolder = Container()
+    val selectedMcVersion = arrayOf<String?>(initialMcVersion)
+    val allVersions = arrayOf<List<IVersion>>(emptyList())
 
     // Compute exact pixel column widths up front so both loadVersions and
     // loadDescription can reference them. Mixing widthRel for two siblings
@@ -88,58 +106,131 @@ class ProjectScreen(
     val verColLeft = GUTTER + descColW + COL_GAP
     val descTextW = descColW - DESC_PAD * 2 - 8 // 8 = scrollbar inset
 
+    fun renderVersions() {
+        versionsList.removeAll()
+        val selected = selectedMcVersion[0]
+        val matching = if (selected == null) allVersions[0]
+        else allVersions[0].filter { it.getMinecraftVersions().contains(selected) }
+        if (matching.isEmpty()) {
+            val label = if (selected == null) "No versions available"
+            else "No $selected versions available"
+            versionsList.child(TextWidget(IKey.str(label)))
+            return
+        }
+        val buttonW = 56
+        val buttonRightInset = 6
+        val nameLeft = 8
+        val nameButtonGap = 12
+        val nameRight = nameLeft + buttonW + buttonRightInset + nameButtonGap
+        val nameW = (verColW - nameRight).coerceAtLeast(40)
+        val fr = Minecraft.getMinecraft().fontRenderer
+        matching.forEach { version: IVersion ->
+            val rawName = version.getName()
+            val truncated = fr != null && fr.getStringWidth(rawName) > nameW
+            val displayName = if (truncated)
+                fr.trimStringToWidth(rawName, nameW - fr.getStringWidth("...")) + "..."
+            else rawName
+            val nameWidget = TextWidget(IKey.str(displayName))
+                .left(nameLeft).width(nameW).heightRel(1f)
+                .color(accent)
+                .alignment(com.cleanroommc.modularui.utils.Alignment.CenterLeft)
+            if (truncated) {
+                nameWidget.tooltip().addLine(rawName)
+            }
+            val row = Flow.row()
+                .widthRel(1f).height(22).margin(0, 0, 0, 3)
+                .background(Rectangle().color(rowBackground))
+                .child(nameWidget)
+                .child(
+                    SimpleButton()
+                        .size(buttonW, 16).right(buttonRightInset).top(3)
+                        .overlay(IKey.str("Install"))
+                        .onMousePressed { btn ->
+                            if (btn == 0) {
+                                install(version, project, type, packsFolder, sourceParent, platformId)
+                                true
+                            } else false
+                        }
+                )
+            versionsList.child(row)
+        }
+    }
+
     fun loadVersions() {
         project.getVersions().thenAccept { versions ->
             Minecraft.getMinecraft().func_152344_a {
-                versionsList.removeAll()
-                val mcVersion = Platform.getMcVersion()
-                val matching = versions.filter { it.getMinecraftVersions().contains(mcVersion) }
-                if (matching.isEmpty()) {
-                    versionsList.child(TextWidget(IKey.str("No $mcVersion versions available")))
-                    return@func_152344_a
+                allVersions[0] = versions
+                // Build the MC-version dropdown from every version this
+                // project actually ships. Order: newest-first (lexicographic
+                // by dotted segments is wrong for "1.10" vs "1.9", so we
+                // compare as version tuples). "Any" sits at the top so users
+                // can grab e.g. a shader that wasn't marked compatible with
+                // their MC version but works anyway.
+                val mcVersions = versions.flatMap { it.getMinecraftVersions() }.toSet().toList()
+                    .sortedWith(Comparator { a, b -> compareVersionDesc(a, b) })
+
+                // If the browse-screen MC version isn't among the project's
+                // supported versions, default to "Any" so the user can still
+                // see the version list instead of an empty pane.
+                if (selectedMcVersion[0] != null && selectedMcVersion[0] !in mcVersions) {
+                    selectedMcVersion[0] = null
                 }
-                // Carve out exact pixel widths so the name doesn't run into
-                // the Install button. Truncate names that still don't fit so
-                // each row stays a single line.
-                val buttonW = 56
-                val buttonRightInset = 6
-                val nameLeft = 8
-                // 12px breathing room between the name's right edge and the
-                // Install button's left edge so it doesn't read as squished.
-                val nameButtonGap = 12
-                val nameRight = nameLeft + buttonW + buttonRightInset + nameButtonGap
-                val nameW = (verColW - nameRight).coerceAtLeast(40)
-                val fr = Minecraft.getMinecraft().fontRenderer
-                matching.forEach { version: IVersion ->
-                    val rawName = version.getName()
-                    val truncated = fr != null && fr.getStringWidth(rawName) > nameW
-                    val displayName = if (truncated)
-                        fr.trimStringToWidth(rawName, nameW - fr.getStringWidth("...")) + "..."
-                    else rawName
-                    val nameWidget = TextWidget(IKey.str(displayName))
-                        .left(nameLeft).width(nameW).heightRel(1f)
-                        .color(accent)
-                        .alignment(com.cleanroommc.modularui.utils.Alignment.CenterLeft)
-                    if (truncated) {
-                        nameWidget.tooltip().addLine(rawName)
+
+                versionFilterHolder.removeAll()
+                // Cap the popup so it never extends past the bottom of the
+                // window. holder.top is bodyTop+18, popup sits at +28 inside
+                // it, leave a GUTTER gutter at the bottom.
+                val popupTopAbsolute = (GUTTER + 64) + 18 + 28
+                val maxPopupH = (sr0.scaledHeight - popupTopAbsolute - GUTTER).coerceAtLeast(40)
+                val desiredH = (mcVersions.size + 1) * 12 + 4
+                val popup = SimpleList()
+                    .top(28).left(0).widthRel(1f).height(desiredH.coerceAtMost(maxPopupH))
+                    .background(Rectangle().color(0xFF1F2328.toInt()))
+                popup.setEnabled(false)
+                val button = SimpleButton().widthRel(1f).height(14).top(12).left(0)
+                button.overlay(IKey.dynamic {
+                    val label = selectedMcVersion[0] ?: "Any version"
+                    "$label  v"
+                })
+                button.onMousePressed { b ->
+                    if (b == 0) {
+                        popup.setEnabled(!popup.isEnabled)
+                        val panel = versionsList.panel
+                        if (panel != null && panel.isValid) {
+                            com.cleanroommc.modularui.widget.WidgetTree.resizeInternal(panel.resizer(), false)
+                        }
+                        true
+                    } else false
+                }
+                val options = mutableListOf<Pair<String?, String>>()
+                options.add(null to "Any version")
+                mcVersions.forEach { options.add(it to it) }
+                for ((id, name) in options) {
+                    val opt = SimpleButton().widthRel(1f).height(12)
+                    opt.overlay(IKey.dynamic {
+                        if (selectedMcVersion[0] == id) "§f§l$name§r" else "§7$name§r"
+                    })
+                    opt.onMousePressed { b ->
+                        if (b == 0) {
+                            selectedMcVersion[0] = id
+                            popup.setEnabled(false)
+                            val panel = versionsList.panel
+                            if (panel != null && panel.isValid) {
+                                com.cleanroommc.modularui.widget.WidgetTree.resizeInternal(panel.resizer(), false)
+                            }
+                            renderVersions()
+                            true
+                        } else false
                     }
-                    val row = Flow.row()
-                        .widthRel(1f).height(22).margin(0, 0, 0, 3)
-                        .background(Rectangle().color(rowBackground))
-                        .child(nameWidget)
-                        .child(
-                            SimpleButton()
-                                .size(buttonW, 16).right(buttonRightInset).top(3)
-                                .overlay(IKey.str("Install"))
-                                .onMousePressed { btn ->
-                                    if (btn == 0) {
-                                        install(version, project, type, packsFolder, sourceParent, platformId)
-                                        true
-                                    } else false
-                                }
-                        )
-                    versionsList.child(row)
+                    popup.child(opt)
                 }
+                versionFilterHolder.child(
+                    TextWidget(IKey.str("§7Minecraft version§r")).color(accent)
+                        .top(0).left(0).widthRel(1f).height(10)
+                )
+                versionFilterHolder.child(button)
+                versionFilterHolder.child(popup)
+                renderVersions()
             }
         }
     }
@@ -190,8 +281,13 @@ class ProjectScreen(
     val versionsHeader = TextWidget(IKey.str("Versions").style(EnumChatFormatting.BOLD))
         .top(bodyTop).left(verColLeft).width(verColW).height(14)
         .alignment(com.cleanroommc.modularui.utils.Alignment.CenterLeft)
+    // The dropdown's open popup paints from inside the holder; reserve a
+    // 32px-tall slot (label + button) before the version list, then push the
+    // list down. Popup floats over the list via z-order (last child below).
+    versionFilterHolder
+        .top(bodyTop + 18).left(verColLeft).width(verColW).height(28)
     versionsList
-        .top(bodyTop + 18).left(verColLeft).width(verColW).bottom(GUTTER)
+        .top(bodyTop + 50).left(verColLeft).width(verColW).bottom(GUTTER)
 
     VintageResourcify.LOG.info(
         "ProjectScreen lambda exit: building panel projectIcon={}",
@@ -206,6 +302,9 @@ class ProjectScreen(
         .child(descriptionList)
         .child(versionsHeader)
         .child(versionsList)
+        // Last child so the dropdown popup paints over versionsList rather
+        // than being clipped behind it.
+        .child(versionFilterHolder)
 })
 
 private fun install(
