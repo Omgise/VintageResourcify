@@ -18,6 +18,7 @@
 package dev.dediamondpro.resourcify.util
 
 import dev.dediamondpro.resourcify.ModInfo
+import dev.dediamondpro.resourcify.VintageResourcify
 
 import java.awt.image.BufferedImage
 import java.io.InputStream
@@ -164,7 +165,17 @@ fun URLConnection.getEncodedInputStream(): InputStream? {
             "deflate" -> DeflaterInputStream(inputStream)
             else -> inputStream
         }
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+        val status = try {
+            (this as? HttpsURLConnection)?.responseCode
+        } catch (_: Exception) {
+            null
+        }
+        if (status != null && status >= 400) {
+            VintageResourcify.LOG.warn("HTTP {} while fetching {}", status, this.url)
+        } else {
+            VintageResourcify.LOG.warn("Failed to fetch {}", this.url, e)
+        }
         null
     }
 }

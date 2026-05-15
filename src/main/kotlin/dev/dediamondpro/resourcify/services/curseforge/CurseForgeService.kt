@@ -34,10 +34,9 @@ object CurseForgeService : IService {
     const val API = "https://api.curseforge.com/v1"
 
     /**
-     * This API key should only be used by Resourcify, you are not allowed to use it in your own project or fork,
-     * if you want to use the CurseForge API in your own project, you should apply for your own API key.
+     * Fallback CurseForge API key used when Config.curseApiToken is empty.
      */
-    const val API_KEY = "\$2a\$10\$7rGm5tkZjhmJr70sf0zIK.RK5iSPBlFuPAUCF7hbogBtrykSMihtS"
+    const val API_KEY = "\$2a\$10\$x/7WFjN78HRAg7S6IQQCJeYoJz0/PQNCZIoN7CY3GxwAI6krlRskW"
     private var minecraftVersions: CompletableFuture<List<CurseForgeMinecraftVersions>>? = null
     private var categories: CompletableFuture<List<CurseForgeCategory>>? = null
 

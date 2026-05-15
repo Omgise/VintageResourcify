@@ -579,8 +579,14 @@ class ProjectScreen(
     }
 
     fun loadVersions() {
-        project.getVersions().thenAccept { versions ->
+        project.getVersions().whenComplete { versions, error ->
             Minecraft.getMinecraft().func_152344_a {
+                if (error != null) {
+                    VintageResourcify.LOG.warn("Failed to load versions for project {}", project.getId(), error)
+                    versionsList.removeAll()
+                    versionsList.child(TextWidget(IKey.str("Failed to load versions")))
+                    return@func_152344_a
+                }
                 allVersions[0] = versions
                 // Build the MC-version dropdown from every version this
                 // project actually ships. Order: newest-first (lexicographic
@@ -658,9 +664,14 @@ class ProjectScreen(
     }
 
     fun loadDescription() {
-        project.getDescription().thenAccept { rawMd ->
+        project.getDescription().whenComplete { rawMd, error ->
             Minecraft.getMinecraft().func_152344_a {
                 descriptionList.removeAll()
+                if (error != null) {
+                    VintageResourcify.LOG.warn("Failed to load description for project {}", project.getId(), error)
+                    descriptionList.child(TextWidget(IKey.str("Failed to load description")).color(accent))
+                    return@func_152344_a
+                }
                 if (rawMd.isBlank()) {
                     descriptionList.child(TextWidget(IKey.str("(no description)")).color(accent))
                     return@func_152344_a
