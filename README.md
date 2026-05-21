@@ -1,6 +1,6 @@
 # Vintage Resourcify
 
-`1.7.10` [DeDiamondPro/Resourcify](https://github.com/DeDiamondPro/Resourcify) backport.
+`1.7.10` [Resourcify](https://github.com/DeDiamondPro/Resourcify) backport.
 
 ![logo](images/logo_small.png)
 
@@ -9,6 +9,8 @@
 [![maven](images/badges/maven.png)](https://maven.fentanylsolutions.org/#/releases/dev/dediamondpro/resourcify/VintageResourcify)
 ![forge](images/badges/forge.png)
 [![cord](images/badges/cord.png)](https://discord.gg/xAWCqGrguG)
+
+### ⚠️ this project's CurseForge API token has not be approved yet. Please set your own in the config.
 
 <!--
 [![curse](images/badges/curse.png)](https://www.curseforge.com/minecraft/mc-mods/x)
@@ -24,7 +26,7 @@
 
 Vintage Resourcify supports Angelica [![curse](images/icons/curse.png)](https://www.curseforge.com/minecraft/mc-mods/angelica)  [![modrinth](images/icons/modrinth.png)](https://modrinth.com/mod/angelica/versions) [![git](images/icons/git.png)](https://github.com/GTNewHorizons/Angelica) and Swansong [![curse](images/icons/curse.png)](https://www.curseforge.com/minecraft/mc-mods/swansong)  [![modrinth](images/icons/modrinth.png)](https://modrinth.com/mod/swansong) [![git](images/icons/git.png)](https://github.com/vfx-dev/SwanSong). 
 
-![logo](images/screenshots/search.png)
+![search](images/screenshots/search.png)
 
 ## Dependencies
 * [UniMixins](https://modrinth.com/mod/unimixins) [![curse](images/icons/curse.png)](https://www.curseforge.com/minecraft/mc-mods/unimixins)  [![modrinth](images/icons/modrinth.png)](https://modrinth.com/mod/unimixins/versions) [![git](images/icons/git.png)](https://github.com/LegacyModdingMC/UniMixins/releases)
