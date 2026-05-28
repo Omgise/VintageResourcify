@@ -197,7 +197,7 @@ class BrowseScreen(
                         // right(INNER_PAD); the button is a single
                         // edge-to-edge overlay and would otherwise paint
                         // under the scrollbar track.
-                        .widthRel(1f).height(20).margin(0, 10, 0, CARD_GAP)
+                        .left(0).right(10).height(20).margin(0, 0, 0, CARD_GAP)
                         .overlay(IKey.str("Load more (${loadedCount}/${totalCount})"))
                         .onMousePressed { b -> if (b == 0) { loadPage(append = true); true } else false }
                     resultsList.child(btn)
@@ -235,7 +235,7 @@ class BrowseScreen(
     ): SimpleButton {
         // Right margin clears the filtersList scrollbar (~6px); without it,
         // the pill's right edge paints under the scroll track.
-        val btn = SimpleButton().widthRel(1f).height(12).margin(0, 7, 1, 1)
+        val btn = SimpleButton().left(0).right(7).height(12).margin(0, 0, 1, 1)
         btn.overlay(IKey.dynamic {
             val resolved = dev.dediamondpro.resourcify.util.localizeOrDefault(displayName, displayName)
             if (isSelected()) "§f§l$resolved§r" else "§7$resolved§r"
