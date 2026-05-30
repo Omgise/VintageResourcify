@@ -32,10 +32,9 @@ dependencies {
     runtimeOnlyNonPublishable("com.github.GTNewHorizons:GTNHLib:0.11.2:dev") { transitive = false }
     runtimeOnlyNonPublishable("com.github.GTNewHorizons:Hodgepodge:2.7.155:dev")
 
-    //devOnlyNonPublishable("com.github.GTNewHorizons:Angelica:2.1.28:dev")
-    compileOnly("com.github.GTNewHorizons:Angelica:2.1.28:dev")
-    devOnlyNonPublishable("com.ventooth:swansong-mc1.7.10:1.3.4")
-    devOnlyNonPublishable("com.falsepattern:falsetweaks-mc1.7.10:4.4.2")
+    devOnlyNonPublishable("com.github.GTNewHorizons:Angelica:2.1.28:dev")
+    compileOnly("com.ventooth:swansong-mc1.7.10:1.3.4")
+    compileOnly("com.falsepattern:falsetweaks-mc1.7.10:4.4.2")
     //runtimeOnlyNonPublishable("com.falsepattern:falsepatternlib-mc1.7.10:1.12.2")
     devOnlyNonPublishable(rfg.deobf("curse.maven:catalogue-vintage-1465746:7695645"))
 }
