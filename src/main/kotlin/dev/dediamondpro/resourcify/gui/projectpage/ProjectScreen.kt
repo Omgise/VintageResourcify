@@ -186,8 +186,22 @@ private class GalleryImageWidget(
     }
 
     override fun onMousePressed(mouseButton: Int): Interactable.Result {
-        return Interactable.Result.SUCCESS
+        if (mouseButton != 0 && mouseButton != 1) return Interactable.Result.IGNORE
+        val bounds = renderedImageBounds() ?: return Interactable.Result.IGNORE
+        val mouseX = getContext().mouseX
+        val mouseY = getContext().mouseY
+        return if (mouseX >= bounds.x &&
+            mouseX < bounds.x + bounds.width &&
+            mouseY >= bounds.y &&
+            mouseY < bounds.y + bounds.height
+        ) {
+            Interactable.Result.SUCCESS
+        } else {
+            Interactable.Result.IGNORE
+        }
     }
+
+    override fun canClickThrough(): Boolean = true
 
     override fun draw(context: ModularGuiContext, widgetTheme: WidgetThemeEntry<*>) {
         ensureRequested()
@@ -195,21 +209,37 @@ private class GalleryImageWidget(
         val w = imgW
         val h = imgH
         if (w <= 0 || h <= 0) return
-
-        val areaW = getArea().width.coerceAtLeast(1)
-        val areaH = getArea().height.coerceAtLeast(1)
-        val scale = minOf(areaW.toFloat() / w, areaH.toFloat() / h)
-        val drawW = (w * scale).toInt().coerceAtLeast(1)
-        val drawH = (h * scale).toInt().coerceAtLeast(1)
-        val drawX = (areaW - drawW) / 2
-        val drawY = (areaH - drawH) / 2
+        val bounds = renderedImageBounds() ?: return
 
         GL11.glEnable(GL11.GL_TEXTURE_2D)
         GL11.glEnable(GL11.GL_BLEND)
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA)
         Minecraft.getMinecraft().textureManager.bindTexture(rl)
         GL11.glColor4f(1f, 1f, 1f, 1f)
-        Gui.func_152125_a(drawX, drawY, 0f, 0f, w, h, drawW, drawH, w.toFloat(), h.toFloat())
+        Gui.func_152125_a(
+            bounds.x,
+            bounds.y,
+            0f,
+            0f,
+            w,
+            h,
+            bounds.width,
+            bounds.height,
+            w.toFloat(),
+            h.toFloat(),
+        )
+    }
+
+    private fun renderedImageBounds(): ImageBounds? {
+        val w = imgW
+        val h = imgH
+        if (texture == null || w <= 0 || h <= 0) return null
+        val areaW = getArea().width.coerceAtLeast(1)
+        val areaH = getArea().height.coerceAtLeast(1)
+        val scale = minOf(areaW.toFloat() / w, areaH.toFloat() / h)
+        val drawW = (w * scale).toInt().coerceAtLeast(1)
+        val drawH = (h * scale).toInt().coerceAtLeast(1)
+        return ImageBounds((areaW - drawW) / 2, (areaH - drawH) / 2, drawW, drawH)
     }
 
     private fun ensureRequested() {
@@ -256,6 +286,8 @@ private class GalleryImageWidget(
     companion object {
         private val idCounter = AtomicInteger()
     }
+
+    private data class ImageBounds(val x: Int, val y: Int, val width: Int, val height: Int)
 }
 
 private class KeyCatcherWidget(private val onEscape: () -> Unit) : Widget<KeyCatcherWidget>(), Interactable {
