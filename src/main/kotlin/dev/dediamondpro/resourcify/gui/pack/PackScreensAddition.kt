@@ -73,6 +73,7 @@ object PackScreensAddition {
     private val PICK_FILE_TEXTURE = ResourceLocation(VintageResourcify.MODID, "pick_file.png")
     private val BUTTON_PRESS_SOUND = ResourceLocation("gui.button.press")
     private val DOWNLOAD_CHIME_SOUND = ResourceLocation(VintageResourcify.MODID, "download_chime")
+    private val IMPORT_CHIME_SOUND = ResourceLocation(VintageResourcify.MODID, "import_chime")
     private val UPDATE_CHIME_SOUND = ResourceLocation(VintageResourcify.MODID, "update_chime")
 
     @Volatile private var toastText: String? = null
@@ -328,7 +329,10 @@ object PackScreensAddition {
             VintageResourcify.LOG.info("Importing pack file {} to {}", source, target)
             Files.copy(source.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
             showToast("Imported ${target.name}", durationMs = 5_000)
-            runClientSync { refreshHostPackScreen(type) }
+            runClientSync {
+                playImportChime()
+                refreshHostPackScreen(type)
+            }
         } catch (e: Throwable) {
             VintageResourcify.LOG.warn("Could not import pack file {}", source, e)
             showToast("Import failed", durationMs = 5_000)
@@ -988,6 +992,12 @@ object PackScreensAddition {
     private fun playDownloadChime() {
         Minecraft.getMinecraft().soundHandler.playSound(
             PositionedSoundRecord.func_147674_a(DOWNLOAD_CHIME_SOUND, 1.0f)
+        )
+    }
+
+    private fun playImportChime() {
+        Minecraft.getMinecraft().soundHandler.playSound(
+            PositionedSoundRecord.func_147674_a(IMPORT_CHIME_SOUND, 1.0f)
         )
     }
 

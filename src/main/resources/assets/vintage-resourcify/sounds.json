@@ -5,6 +5,12 @@
       "download_chime"
     ]
   },
+  "import_chime": {
+    "category": "master",
+    "sounds": [
+      "import_chime"
+    ]
+  },
   "delete_warning": {
     "category": "master",
     "sounds": [
