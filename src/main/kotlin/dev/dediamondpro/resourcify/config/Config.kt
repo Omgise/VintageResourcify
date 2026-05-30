@@ -35,6 +35,7 @@ class Config {
     var shaderPacksEnabled: Boolean = true
     var worldsEnabled: Boolean = true
     var autoUpdateChecks: Boolean = true
+    var enableSounds: Boolean = true
     var curseUserAgent: String = ""
     var curseApiToken: String = ""
 

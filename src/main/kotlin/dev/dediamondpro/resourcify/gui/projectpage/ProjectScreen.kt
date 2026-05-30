@@ -60,12 +60,12 @@ import dev.dediamondpro.resourcify.util.DownloadManager
 import dev.dediamondpro.resourcify.util.DownloadResult
 import dev.dediamondpro.resourcify.util.LocalIndex
 import dev.dediamondpro.resourcify.util.MarkdownRenderer
+import dev.dediamondpro.resourcify.util.ResourcifySounds
 import dev.dediamondpro.resourcify.util.ShaderGuiHelper
 import dev.dediamondpro.resourcify.util.UrlOpener
 import dev.dediamondpro.resourcify.util.getImageAsync
 import dev.dediamondpro.resourcify.util.toURL
 import net.minecraft.client.Minecraft
-import net.minecraft.client.audio.PositionedSoundRecord
 import net.minecraft.client.gui.Gui
 import net.minecraft.client.gui.GuiScreen
 import net.minecraft.client.gui.GuiScreenResourcePacks
@@ -376,9 +376,7 @@ private val GLOBE_TEXTURE = ResourceLocation(VintageResourcify.MODID, "globe.png
 private val DOWNLOAD_CHIME_SOUND = ResourceLocation(VintageResourcify.MODID, "download_chime")
 
 private fun playDownloadChime() {
-    Minecraft.getMinecraft().soundHandler.playSound(
-        PositionedSoundRecord.func_147674_a(DOWNLOAD_CHIME_SOUND, 1.0f)
-    )
+    ResourcifySounds.play(DOWNLOAD_CHIME_SOUND)
 }
 
 // See BrowseScreen's commit 8a9f9e5 for why all state lives in the lambda

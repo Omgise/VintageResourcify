@@ -61,6 +61,22 @@ public class ResourcifyConfigGui extends GuiConfig {
                 }
             });
         list.add(
+            new DummyConfigElement<Boolean>(
+                "enableSounds",
+                Config.Companion.getInstance()
+                    .getEnableSounds(),
+                ConfigGuiType.BOOLEAN,
+                "resourcify.config.enable-sounds") {
+
+                @Override
+                public void set(Boolean value) {
+                    super.set(value);
+                    Config.Companion.getInstance()
+                        .setEnableSounds(value);
+                    Config.Companion.save(Config.Companion.getInstance());
+                }
+            });
+        list.add(
             new DummyConfigElement<String>(
                 "markdownTheme",
                 Config.Companion.getInstance()

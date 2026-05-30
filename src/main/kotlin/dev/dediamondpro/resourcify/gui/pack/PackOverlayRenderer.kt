@@ -20,9 +20,9 @@ package dev.dediamondpro.resourcify.gui.pack
 import dev.dediamondpro.resourcify.VintageResourcify
 import dev.dediamondpro.resourcify.config.ConfiguredPlatforms
 import dev.dediamondpro.resourcify.util.LocalIndex
+import dev.dediamondpro.resourcify.util.ResourcifySounds
 import dev.dediamondpro.resourcify.util.ShaderGuiHelper
 import net.minecraft.client.Minecraft
-import net.minecraft.client.audio.PositionedSoundRecord
 import net.minecraft.client.gui.Gui
 import net.minecraft.client.renderer.OpenGlHelper
 import net.minecraft.client.renderer.Tessellator
@@ -210,21 +210,15 @@ object PackOverlayRenderer {
         entryHoverSeenThisFrame = true
         if (lastEntryHoverKey == key) return
         lastEntryHoverKey = key
-        Minecraft.getMinecraft().soundHandler.playSound(
-            PositionedSoundRecord.func_147674_a(ENTRY_HOVER_SOUND, 1.0f)
-        )
+        ResourcifySounds.play(ENTRY_HOVER_SOUND)
     }
 
     fun playEntrySelectSound() {
-        Minecraft.getMinecraft().soundHandler.playSound(
-            PositionedSoundRecord.func_147674_a(ENTRY_SELECT_SOUND, 1.0f)
-        )
+        ResourcifySounds.play(ENTRY_SELECT_SOUND)
     }
 
     fun playEntryTickSound() {
-        Minecraft.getMinecraft().soundHandler.playSound(
-            PositionedSoundRecord.func_147674_a(ENTRY_HOVER_SOUND, 1.0f)
-        )
+        ResourcifySounds.play(ENTRY_HOVER_SOUND)
     }
 
     /**
@@ -327,15 +321,11 @@ object PackOverlayRenderer {
     }
 
     private fun playDeleteWarningSound() {
-        Minecraft.getMinecraft().soundHandler.playSound(
-            PositionedSoundRecord.func_147674_a(DELETE_WARNING_SOUND, 1.0f)
-        )
+        ResourcifySounds.play(DELETE_WARNING_SOUND)
     }
 
     private fun playDeleteSound() {
-        Minecraft.getMinecraft().soundHandler.playSound(
-            PositionedSoundRecord.func_147674_a(DELETE_SOUND, 1.0f)
-        )
+        ResourcifySounds.play(DELETE_SOUND)
     }
 
     private fun performDelete(hit: DeleteRegion) {

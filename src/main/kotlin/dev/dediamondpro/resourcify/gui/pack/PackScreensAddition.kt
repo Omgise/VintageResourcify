@@ -31,8 +31,9 @@ import dev.dediamondpro.resourcify.services.ProjectType
 import dev.dediamondpro.resourcify.services.ServiceRegistry
 import dev.dediamondpro.resourcify.util.DownloadManager
 import dev.dediamondpro.resourcify.util.DownloadResult
-import dev.dediamondpro.resourcify.util.ShaderGuiHelper
 import dev.dediamondpro.resourcify.util.LocalIndex
+import dev.dediamondpro.resourcify.util.ResourcifySounds
+import dev.dediamondpro.resourcify.util.ShaderGuiHelper
 import net.minecraft.client.Minecraft
 import net.minecraft.client.audio.PositionedSoundRecord
 import net.minecraft.client.gui.Gui
@@ -984,21 +985,15 @@ object PackScreensAddition {
     }
 
     private fun playUpdateChime() {
-        Minecraft.getMinecraft().soundHandler.playSound(
-            PositionedSoundRecord.func_147674_a(UPDATE_CHIME_SOUND, 1.0f)
-        )
+        ResourcifySounds.play(UPDATE_CHIME_SOUND)
     }
 
     private fun playDownloadChime() {
-        Minecraft.getMinecraft().soundHandler.playSound(
-            PositionedSoundRecord.func_147674_a(DOWNLOAD_CHIME_SOUND, 1.0f)
-        )
+        ResourcifySounds.play(DOWNLOAD_CHIME_SOUND)
     }
 
     private fun playImportChime() {
-        Minecraft.getMinecraft().soundHandler.playSound(
-            PositionedSoundRecord.func_147674_a(IMPORT_CHIME_SOUND, 1.0f)
-        )
+        ResourcifySounds.play(IMPORT_CHIME_SOUND)
     }
 
     private fun showToast(text: String, durationMs: Long) {
