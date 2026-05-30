@@ -8,6 +8,7 @@ import com.cleanroommc.modularui.screen.ModularScreen
 import com.cleanroommc.modularui.screen.viewport.GuiContext
 import com.cleanroommc.modularui.screen.viewport.ModularGuiContext
 import com.cleanroommc.modularui.theme.WidgetTheme
+import com.cleanroommc.modularui.utils.Alignment
 import com.cleanroommc.modularui.widget.scroll.VerticalScrollData
 import com.cleanroommc.modularui.widget.Widget
 import com.cleanroommc.modularui.widgets.ButtonWidget
@@ -148,6 +149,7 @@ fun <I : IWidget, W : ListWidget<I, W>> W.sodiumScrollbars(): W {
         VerticalScrollData(false, ResourcifyStyle.SODIUM_SCROLLBAR_WIDTH)
             .apply { texture(ResourcifyStyle.rect(ResourcifyStyle.SODIUM_SCROLLBAR_THUMB)) }
     )
+    crossAxisAlignment(Alignment.CrossAxis.START)
     scrollArea.scrollBarBackgroundColor = ResourcifyStyle.SODIUM_SCROLLBAR_TRACK
     showScrollShadows(false)
     return this
