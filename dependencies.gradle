@@ -22,17 +22,17 @@
 dependencies {
     devOnlyNonPublishable("com.falsepattern:forgelin-mc1.7.10:2.4.1-2.3.10")
 
-    devOnlyNonPublishable("com.github.GTNewHorizons:ModularUI2:2.3.69-1.7.10:dev")
+    devOnlyNonPublishable("com.github.GTNewHorizons:ModularUI2:2.3.71-1.7.10:dev")
 
     implementation("org.fentanylsolutions.fentlib:FentLib:0.0.49:dev")
 
     shadowImplementation("org.commonmark:commonmark:0.28.0")
 
     runtimeOnlyNonPublishable("com.github.GTNewHorizons:NotEnoughItems:2.8.100-GTNH:dev")
-    runtimeOnlyNonPublishable("com.github.GTNewHorizons:GTNHLib:0.11.3:dev") { transitive = false }
+    runtimeOnlyNonPublishable("com.github.GTNewHorizons:GTNHLib:0.11.4:dev") { transitive = false }
     runtimeOnlyNonPublishable("com.github.GTNewHorizons:Hodgepodge:2.7.156:dev")
 
-    devOnlyNonPublishable("com.github.GTNewHorizons:Angelica:2.1.28:dev")
+    devOnlyNonPublishable("com.github.GTNewHorizons:Angelica:2.1.29:dev")
     compileOnly("com.ventooth:swansong-mc1.7.10:1.3.4")
     compileOnly("com.falsepattern:falsetweaks-mc1.7.10:4.4.2")
     //runtimeOnlyNonPublishable("com.falsepattern:falsepatternlib-mc1.7.10:1.12.2")
