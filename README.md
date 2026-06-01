@@ -5,6 +5,7 @@
 ![logo](images/logo_small.png)
 
 [![hub](images/badges/github.png)](https://github.com/JackOfNoneTrades/VintageResourcify/releases)
+[![modrinth](images/badges/modrinth.png)](https://modrinth.com/mod/vintage-resourcify)
 [![curse](images/badges/curse.png)](https://www.curseforge.com/minecraft/mc-mods/vintage-resourcify)
 [![67](images/badges/67.png)](https://67.fentanylsolutions.org/mod/vintage-resourcify)
 [![mcmodcn](images/badges/mcmodcn.png)](https://www.mcmod.cn/class/27359.html)
@@ -15,10 +16,6 @@
 ### ⚠️ This project's CurseForge API token has not be approved yet. Please set your own in the config.
 
 ### ⚠️ The CurseForge version of this mod does not support downloading from third party Modrinth-compatible platforms.
-
-<!--
-[![modrinth](images/badges/modrinth.png)](https://modrinth.com/mod/x)
--->
 
 ## Features
 
