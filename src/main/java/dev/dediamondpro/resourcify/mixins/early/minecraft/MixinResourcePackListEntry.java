@@ -58,10 +58,10 @@ public abstract class MixinResourcePackListEntry {
             // Anchor the badge to its bottom-right corner.
             PackOverlayRenderer.INSTANCE.drawBadge(platform, x + 32 - badge, y + 32 - badge, badge, mouseX, mouseY);
         }
-        // Cross: shown for every pack (tracked or not) while its row is
-        // hovered. We let the user delete any file in the folder, not just
-        // ones we know about.
-        if (rowHovered) {
+        // Cross: shown for real files in the resource-pack folder while the
+        // row is hovered. Virtual repository entries do not get a delete
+        // affordance.
+        if (rowHovered && PackOverlayRenderer.INSTANCE.canDeletePack(folder, file)) {
             int cross = 16;
             // Bigger right inset so the cross stays clear of the GuiSlot
             // scrollbar that vanilla paints inside the slot bounds. Row

@@ -255,13 +255,14 @@ object PackOverlayRenderer {
      * Paint the delete button from `cross.png` (32x16 spritesheet: left half
      * is the rest state, right half is the hover state) and register its
      * rect for the next click. Caller is expected to only invoke this for
-     * tracked packs and only when the row itself is being hovered.
+     * deletable packs and only when the row itself is being hovered.
      */
     fun drawDeleteButton(
         folder: File, file: File, displayName: String,
         x: Int, y: Int, size: Int,
         mouseX: Int, mouseY: Int,
     ) {
+        if (!canDeletePack(folder, file)) return
         val hovered = mouseX in x..(x + size) && mouseY in y..(y + size)
         GL11.glPushAttrib(GL11.GL_ENABLE_BIT or GL11.GL_COLOR_BUFFER_BIT or GL11.GL_CURRENT_BIT)
         try {
@@ -339,9 +340,12 @@ object PackOverlayRenderer {
     fun isDeleteButtonAt(mouseX: Int, mouseY: Int): Boolean =
         deleteRegionAt(mouseX, mouseY) != null
 
-    private fun deleteRegionAt(mouseX: Int, mouseY: Int): DeleteRegion? =
-        activeRegions.firstOrNull { mouseX in it.x1..it.x2 && mouseY in it.y1..it.y2 }
+    private fun deleteRegionAt(mouseX: Int, mouseY: Int): DeleteRegion? {
+        val hit = activeRegions.firstOrNull { mouseX in it.x1..it.x2 && mouseY in it.y1..it.y2 }
             ?: scratch.firstOrNull { mouseX in it.x1..it.x2 && mouseY in it.y1..it.y2 }
+            ?: return null
+        return hit.takeIf { canDeletePack(it.folder, it.file) }
+    }
 
     private fun playDeleteWarningSound() {
         ResourcifySounds.play(DELETE_WARNING_SOUND)
@@ -353,6 +357,10 @@ object PackOverlayRenderer {
 
     private fun performDelete(hit: DeleteRegion): Boolean {
         try {
+            if (!canDeletePack(hit.folder, hit.file)) {
+                VintageResourcify.LOG.warn("Refusing to delete non-pack file {} from {}", hit.file, hit.folder)
+                return false
+            }
             // Drop Forge's open handle for resource packs before deleting.
             // For shader packs we don't hold an open handle, and the call
             // simply no-ops.
@@ -420,6 +428,29 @@ object PackOverlayRenderer {
         var deletedChildren = true
         file.listFiles()?.forEach { deletedChildren = deleteTarget(it) && deletedChildren }
         return file.delete() && deletedChildren
+    }
+
+    /**
+     * Only delete packs that are actual files or directories directly inside
+     * the active pack folder. Synthetic repository entries, like virtual
+     * resource packs provided by other mods, often carry placeholder File
+     * values and must not get a delete affordance.
+     */
+    fun canDeletePack(folder: File, file: File?): Boolean {
+        if (file == null || !file.exists()) return false
+        if (!file.isFile && !file.isDirectory) return false
+
+        val canonicalFolder = safeCanonical(folder)
+        val canonicalFile = safeCanonical(file)
+        return canonicalFile != canonicalFolder && canonicalFile.parentFile == canonicalFolder
+    }
+
+    private fun safeCanonical(file: File): File {
+        return try {
+            file.canonicalFile
+        } catch (_: Throwable) {
+            file.absoluteFile
+        }
     }
 
     private fun displayName(platform: String): String = when (platform.lowercase()) {
